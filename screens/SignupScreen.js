@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { registerUser } from '../api/auth';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COLORS — change these to retheme this screen
@@ -307,11 +308,16 @@ const SignupScreen = ({ navigation }) => {
     if (!validate()) return;
     setLoading(true);
     try {
-      await new Promise(r => setTimeout(r, 1500)); // TODO: replace with real API
+      const newUser = await registerUser({
+        firstName,
+        lastName,
+        email,
+        password,
+      });
       alertRef.current?.show({ type: 'success', message: 'Account created! Welcome to Pamili 🎉' });
-      navigation.replace('Home');
-    } catch {
-      alertRef.current?.show({ type: 'error', message: 'Registration failed. Try again.' });
+      setTimeout(() => navigation.replace('Home', { user: newUser }), 1500);
+    } catch (err) {
+      alertRef.current?.show({ type: 'error', message: err.message || 'Registration failed. Try again.' });
     } finally {
       setLoading(false);
     }

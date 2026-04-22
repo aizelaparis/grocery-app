@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import FloatingTabBar from '../components/FloatingTabBar';
+import ProfileScreen from './ProfileScreen';
 
 const C = {
   green:       '#2E7D32',
@@ -166,9 +167,10 @@ const HomeTabContent = ({ onAddToCart }) => {
   );
 };
 
-const HomeScreen = () => {
+const HomeScreen = ({ navigation, route }) => {
   const [activeTab, setActiveTab] = useState('Home');
   const [cartCount, setCartCount] = useState(2);
+  const [user, setUser] = useState(route?.params?.user ?? null);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -176,7 +178,13 @@ const HomeScreen = () => {
       case 'Browse':  return <PlaceholderTab label="Browse"  icon="grid-view" />;
       case 'Cart':    return <PlaceholderTab label="Cart"    icon="shopping-cart" />;
       case 'Orders':  return <PlaceholderTab label="Orders"  icon="receipt-long" />;
-      case 'Profile': return <PlaceholderTab label="Profile" icon="person" />;
+      case 'Profile': return (
+        <ProfileScreen
+          user={user}
+          onLogout={() => navigation.replace('Login')}
+          onUserUpdate={(updated) => setUser(updated)}
+        />
+      );
       default:        return null;
     }
   };

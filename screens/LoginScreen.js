@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { loginUser } from '../api/auth';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COLORS — change these to retheme this screen
@@ -264,15 +265,15 @@ const LoginScreen = ({ navigation }) => {
     return !Object.keys(e).length;
   };
 
-  const handleLogin = async () => {
+ const handleLogin = async () => {
     if (!validate()) return;
     setLoading(true);
     try {
-      await new Promise(r => setTimeout(r, 1500)); // TODO: replace with real API
+      const loggedInUser = await loginUser({ email, password });
       alertRef.current?.show({ type: 'success', message: 'Welcome back!' });
-      navigation.replace('Home');
-    } catch {
-      alertRef.current?.show({ type: 'error', message: 'Invalid credentials. Try again.' });
+      setTimeout(() => navigation.replace('Home', { user: loggedInUser }), 1500);
+    } catch (err) {
+      alertRef.current?.show({ type: 'error', message: err.message || 'Invalid credentials. Try again.' });
     } finally {
       setLoading(false);
     }

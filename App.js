@@ -1,17 +1,48 @@
-// ─── App.js ──────────────────────────────────────────────────────────────────
-// Entry point. React Native boots into this — it just loads the navigator.
-// You rarely need to touch this file.
-
-import 'react-native-gesture-handler'; // must be first import
+import 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import AppNavigator from './navigation/AppNavigator';
+import { getSession } from './api/session';
 
 export default function App() {
+  const [initialRoute, setInitialRoute]   = useState(null);
+  const [initialParams, setInitialParams] = useState({});
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const user = await getSession();
+      if (user) {
+        setInitialRoute('Home');
+        setInitialParams({ user });
+      } else {
+        setInitialRoute('Login');
+      }
+    };
+    checkSession();
+  }, []);
+
+  if (!initialRoute) {
+    return (
+      <View style={styles.splash}>
+        <ActivityIndicator size="large" color="#2E7D32" />
+      </View>
+    );
+  }
+
   return (
     <>
       <StatusBar style="light" />
-      <AppNavigator />
+      <AppNavigator initialRoute={initialRoute} initialParams={initialParams} />
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  splash: {
+    flex:            1,
+    justifyContent:  'center',
+    alignItems:      'center',
+    backgroundColor: '#F7FAF7',
+  },
+});
