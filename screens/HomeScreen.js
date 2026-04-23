@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import FloatingTabBar from '../components/FloatingTabBar';
+import { getGreeting }  from '../constants/greetings';
 import ProfileScreen from './ProfileScreen';
 
 const C = {
@@ -66,6 +67,7 @@ const ph = StyleSheet.create({
 });
 
 const HomeTabContent = ({ onAddToCart }) => {
+  const greeting = getGreeting(); // add this line
   const [search, setSearch] = useState('');
 
   return (
@@ -76,8 +78,8 @@ const HomeTabContent = ({ onAddToCart }) => {
     >
       <View style={hs.topBar}>
         <View>
-          <Text style={hs.greeting}>Good morning! 👋</Text>
-          <Text style={hs.subGreeting}>What are you shopping for today?</Text>
+        <Text style={hs.greeting}>{getGreeting().text}</Text>
+<Text style={hs.subGreeting}>{getGreeting().sub}</Text>
         </View>
         <TouchableOpacity style={hs.notifBtn}>
           <MaterialIcons name="notifications-none" size={24} color={C.green} />
