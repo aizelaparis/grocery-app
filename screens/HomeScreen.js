@@ -38,12 +38,12 @@ const CATEGORIES = [
 ];
 
 const FEATURED = [
-  { id: '1', name: 'Fresh Mangoes',     price: '₱120', unit: '/kg',   tag: 'Sale',    emoji: '🥭' },
-  { id: '2', name: 'Brown Eggs (12pc)', price: '₱95',  unit: '/tray', tag: 'Popular', emoji: '🥚' },
-  { id: '3', name: 'Whole Milk 1L',     price: '₱75',  unit: '/pc',   tag: 'New',     emoji: '🥛' },
-  { id: '4', name: 'White Bread',       price: '₱55',  unit: '/loaf', tag: null,      emoji: '🍞' },
-  { id: '5', name: 'Ripe Bananas',      price: '₱40',  unit: '/kg',   tag: 'Sale',    emoji: '🍌' },
-  { id: '6', name: 'Tomatoes',          price: '₱65',  unit: '/kg',   tag: null,      emoji: '🍅' },
+  { id: '1', name: 'Fresh Mangoes',     price: '₱120', unit: '1 kg',    tag: 'Sale',    emoji: '🥭' },
+  { id: '2', name: 'Brown Eggs',        price: '₱95',  unit: '12 pcs',  tag: 'Popular', emoji: '🥚' },
+  { id: '3', name: 'Whole Milk',        price: '₱75',  unit: '1 Liter', tag: 'New',     emoji: '🥛' },
+  { id: '4', name: 'White Bread',       price: '₱55',  unit: '1 Loaf',  tag: null,      emoji: '🍞' },
+  { id: '5', name: 'Ripe Bananas',      price: '₱40',  unit: '1 kg',    tag: 'Sale',    emoji: '🍌' },
+  { id: '6', name: 'Tomatoes',          price: '₱65',  unit: '1 kg',    tag: null,      emoji: '🍅' },
 ];
 
 const TAG_COLORS = {
@@ -67,7 +67,6 @@ const ph = StyleSheet.create({
 });
 
 const HomeTabContent = ({ onAddToCart }) => {
-  const greeting = getGreeting(); // add this line
   const [search, setSearch] = useState('');
 
   return (
@@ -76,10 +75,11 @@ const HomeTabContent = ({ onAddToCart }) => {
       contentContainerStyle={{ paddingBottom: 110 }}
       showsVerticalScrollIndicator={false}
     >
+      {/* Top Bar */}
       <View style={hs.topBar}>
         <View>
-        <Text style={hs.greeting}>{getGreeting().text}</Text>
-<Text style={hs.subGreeting}>{getGreeting().sub}</Text>
+          <Text style={hs.greeting}>Good morning! 👋</Text>
+          <Text style={hs.subGreeting}>What are you shopping for today?</Text>
         </View>
         <TouchableOpacity style={hs.notifBtn}>
           <MaterialIcons name="notifications-none" size={24} color={C.green} />
@@ -87,6 +87,7 @@ const HomeTabContent = ({ onAddToCart }) => {
         </TouchableOpacity>
       </View>
 
+      {/* Search */}
       <View style={hs.searchBar}>
         <MaterialIcons name="search" size={20} color={C.textLight} style={{ marginRight: 8 }} />
         <TextInput
@@ -103,6 +104,7 @@ const HomeTabContent = ({ onAddToCart }) => {
         )}
       </View>
 
+      {/* Promo Banner */}
       <View style={hs.promoBanner}>
         <View style={{ flex: 1 }}>
           <Text style={hs.promoTag}>🎉 Weekly Deals</Text>
@@ -114,6 +116,7 @@ const HomeTabContent = ({ onAddToCart }) => {
         <Text style={{ fontSize: 62, lineHeight: 70 }}>🛒</Text>
       </View>
 
+      {/* Categories */}
       <View style={hs.sectionHeader}>
         <Text style={hs.sectionTitle}>Categories</Text>
         <TouchableOpacity><Text style={hs.seeAll}>See all</Text></TouchableOpacity>
@@ -136,6 +139,7 @@ const HomeTabContent = ({ onAddToCart }) => {
         ))}
       </ScrollView>
 
+      {/* Featured Items */}
       <View style={hs.sectionHeader}>
         <Text style={hs.sectionTitle}>Featured Items</Text>
         <TouchableOpacity><Text style={hs.seeAll}>See all</Text></TouchableOpacity>
@@ -144,24 +148,33 @@ const HomeTabContent = ({ onAddToCart }) => {
       <View style={hs.featuredGrid}>
         {FEATURED.map(item => (
           <View key={item.id} style={hs.productCard}>
-            <View style={hs.productEmoji}>
-              <Text style={{ fontSize: 32 }}>{item.emoji}</Text>
+
+            {/* Image area */}
+            <View style={hs.imageArea}>
+              <Text style={hs.productEmoji}>{item.emoji}</Text>
             </View>
+
+            {/* Tag badge — top-left, overlapping image */}
             {item.tag && (
-              <View style={[hs.productTag, { backgroundColor: TAG_COLORS[item.tag]?.bg }]}>
-                <Text style={[hs.productTagText, { color: TAG_COLORS[item.tag]?.text }]}>
+              <View style={[hs.tagBadge, { backgroundColor: TAG_COLORS[item.tag]?.bg }]}>
+                <Text style={[hs.tagText, { color: TAG_COLORS[item.tag]?.text }]}>
                   {item.tag}
                 </Text>
               </View>
             )}
-            {!item.tag && <View style={{ height: 18 }} />}
-            <Text style={hs.productName} numberOfLines={2}>{item.name}</Text>
-            <Text style={hs.productPrice}>
-              {item.price}<Text style={hs.productUnit}>{item.unit}</Text>
-            </Text>
-            <TouchableOpacity style={hs.addBtn} onPress={onAddToCart}>
-              <MaterialIcons name="add" size={16} color={C.white} />
+
+            {/* Info section */}
+            <View style={hs.infoArea}>
+              <Text style={hs.productName} numberOfLines={2}>{item.name}</Text>
+              <Text style={hs.productPrice}>{item.price}</Text>
+              <Text style={hs.productUnit}>{item.unit}</Text>
+            </View>
+
+            {/* Floating circle + button — bottom-right */}
+            <TouchableOpacity style={hs.addBtn} onPress={onAddToCart} activeOpacity={0.85}>
+              <MaterialIcons name="add" size={20} color={C.white} />
             </TouchableOpacity>
+
           </View>
         ))}
       </View>
@@ -169,7 +182,8 @@ const HomeTabContent = ({ onAddToCart }) => {
   );
 };
 
-const HomeScreen = ({ navigation, route }) => {
+const HomeScreen = ({ route, navigation }) => {
+
   const [activeTab, setActiveTab] = useState('Home');
   const [cartCount, setCartCount] = useState(2);
   const [user, setUser] = useState(route?.params?.user ?? null);
@@ -183,8 +197,8 @@ const HomeScreen = ({ navigation, route }) => {
       case 'Profile': return (
         <ProfileScreen
           user={user}
-          onLogout={() => navigation.replace('Login')}
           onUserUpdate={(updated) => setUser(updated)}
+          onLogout={() => navigation.reset({ index: 0, routes: [{ name: 'Login' }] })}
         />
       );
       default:        return null;
@@ -292,46 +306,89 @@ const hs = StyleSheet.create({
     elevation:         5,
   },
   catLabel: { fontSize: 10, fontWeight: '600', color: C.textMid },
+
+  // ── Featured Grid ──────────────────────────────────────────
   featuredGrid: {
     flexDirection:     'row',
     flexWrap:          'wrap',
-    paddingHorizontal: 12,
-    gap:               8,
+    paddingHorizontal: 14,
+    gap:               12,
+    marginBottom:      8,
   },
+
   productCard: {
-    width:           '31%',
+    width:           '47%',
     backgroundColor: C.white,
-    borderRadius:    14,
-    padding:         9,
-    shadowColor:     '#1B5E20',
-    shadowOffset:    { width: 0, height: 5 },
-    shadowOpacity:   0.12,
-    shadowRadius:    10,
-    elevation:       6,
+    borderRadius:    16,
+    overflow:        'visible',
+    shadowColor:     '#000',
+    shadowOffset:    { width: 0, height: 3 },
+    shadowOpacity:   0.08,
+    shadowRadius:    8,
+    elevation:       4,
   },
-  productEmoji: {
-    alignItems:     'center',
-    justifyContent: 'center',
-    height:         54,
-    marginBottom:   6,
+
+  // Light gray bg image area — matches reference
+  imageArea: {
+    backgroundColor:      '#F2F2F2',
+    borderTopLeftRadius:  16,
+    borderTopRightRadius: 16,
+    height:               140,
+    alignItems:           'center',
+    justifyContent:       'center',
   },
-  productTag: {
-    alignSelf:         'flex-start',
-    borderRadius:      5,
-    paddingHorizontal: 5,
-    paddingVertical:   2,
-    marginBottom:      4,
+  productEmoji: { fontSize: 66 },
+
+  // Pill tag badge top-left, overlapping the image area
+  tagBadge: {
+    position:          'absolute',
+    top:               10,
+    left:              10,
+    borderRadius:      20,
+    paddingHorizontal: 9,
+    paddingVertical:   4,
   },
-  productTagText: { fontSize: 9,  fontWeight: '700' },
-  productName:    { fontSize: 11, fontWeight: '600', color: C.textDark, marginBottom: 3, minHeight: 28 },
-  productPrice:   { fontSize: 13, fontWeight: '800', color: C.green, marginBottom: 8 },
-  productUnit:    { fontSize: 10, fontWeight: '400', color: C.textLight },
+  tagText: { fontSize: 10, fontWeight: '700' },
+
+  infoArea: {
+    paddingHorizontal: 12,
+    paddingTop:        10,
+    paddingBottom:     44,  
+  },
+  productName: {
+    fontSize:     14,
+    fontWeight:   '600',
+    color:        C.textDark,
+    marginBottom: 5,
+    lineHeight:   19,
+  },
+  productPrice: {
+    fontSize:     16,
+    fontWeight:   '800',
+    color:        C.green,
+    marginBottom: 2,
+  },
+  productUnit: {
+    fontSize: 12,
+    color:    C.textLight,
+  },
+
+
   addBtn: {
+    position:        'absolute',
+    bottom:          12,
+    right:           12,
+    width:           38,
+    height:          38,
+    borderRadius:    19,
     backgroundColor: C.green,
-    borderRadius:    7,
-    height:          26,
     alignItems:      'center',
     justifyContent:  'center',
+    shadowColor:     C.greenDark,
+    shadowOffset:    { width: 0, height: 3 },
+    shadowOpacity:   0.4,
+    shadowRadius:    6,
+    elevation:       6,
   },
 });
 
