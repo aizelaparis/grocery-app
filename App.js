@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import AppNavigator from './navigation/AppNavigator';
 import { getSession } from './api/session';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function App() {
   const [initialRoute, setInitialRoute]   = useState(null);
@@ -16,7 +17,13 @@ export default function App() {
         setInitialRoute('Home');
         setInitialParams({ user });
       } else {
-        setInitialRoute('Login');
+        const hasLaunched = await AsyncStorage.getItem('hasLaunched');
+        if (!hasLaunched) {
+          await AsyncStorage.setItem('hasLaunched', 'true');
+          setInitialRoute('Welcome'); 
+        } else {
+          setInitialRoute('Login');
+        }
       }
     };
     checkSession();

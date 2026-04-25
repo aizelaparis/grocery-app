@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,10 +8,14 @@ import {
   View,
   StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import FloatingTabBar from '../components/FloatingTabBar';
 import { getGreeting }  from '../constants/greetings';
 import ProfileScreen from './ProfileScreen';
+import CategoryScreen from './CategoryScreen';
+import CartScreen   from './CartScreen';
+import OrdersScreen from './OrdersScreen';
 
 const C = {
   green:       '#2E7D32',
@@ -191,9 +194,9 @@ const HomeScreen = ({ route, navigation }) => {
   const renderContent = () => {
     switch (activeTab) {
       case 'Home':    return <HomeTabContent onAddToCart={() => setCartCount(v => v + 1)} />;
-      case 'Browse':  return <PlaceholderTab label="Browse"  icon="grid-view" />;
-      case 'Cart':    return <PlaceholderTab label="Cart"    icon="shopping-cart" />;
-      case 'Orders':  return <PlaceholderTab label="Orders"  icon="receipt-long" />;
+      case 'Category': return <CategoryScreen navigation={navigation} />;
+      case 'Cart':   return <CartScreen />;
+      case 'Orders': return <OrdersScreen />;
       case 'Profile': return (
         <ProfileScreen
           user={user}

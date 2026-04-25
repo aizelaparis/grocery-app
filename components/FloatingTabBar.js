@@ -13,7 +13,7 @@ const C = {
 
 const TABS = [
   { key: 'Home',    icon: 'home',          label: 'Home' },
-  { key: 'Browse',  icon: 'grid-view',     label: 'Browse' },
+  { key: 'Category',  icon: 'grid-view',     label: 'Browse' },
   { key: 'Cart',    icon: 'shopping-cart', label: 'Cart' },
   { key: 'Orders',  icon: 'receipt-long',  label: 'Orders' },
   { key: 'Profile', icon: 'person',        label: 'Profile' },

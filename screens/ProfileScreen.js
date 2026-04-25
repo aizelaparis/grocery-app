@@ -32,6 +32,8 @@ const C = {
   bg:         '#F7FAF7',
   error:      '#D32F2F',
   errorBg:    '#FFEBEE',
+  accent:     '#FF6F00',
+  accentBg:   '#FFF3E0',
 };
 
 const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
@@ -154,33 +156,70 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
   return (
     <TouchableWithoutFeedback onPress={dismissEditing}>
       <SafeAreaView style={s.root}>
-        <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
+        <StatusBar barStyle="light-content" backgroundColor={C.green} />
 
         <ScrollView
           contentContainerStyle={s.scroll}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {/* ── Grab-style header ── */}
           <View style={s.greenHeader}>
-            <Text style={s.pageTitle}>My Profile</Text>
+            <View style={s.headerTopRow}>
+              <Text style={s.pageTitle}></Text>
+              <TouchableOpacity style={s.settingsBtn} activeOpacity={0.8}>
+                <MaterialIcons name="settings" size={20} color={C.white} />
+              </TouchableOpacity>
+            </View>
+
             <View style={s.avatarWrap}>
               <View style={s.avatarCircle}>
-                <MaterialIcons name="person" size={56} color={C.green} />
+                <MaterialIcons name="person" size={52} color={C.green} />
               </View>
               <TouchableOpacity style={s.cameraBtn} onPress={handleChangePhoto} activeOpacity={0.8}>
-                <MaterialIcons name="camera-alt" size={15} color={C.white} />
+                <MaterialIcons name="camera-alt" size={13} color={C.white} />
               </TouchableOpacity>
             </View>
             <Text style={s.nameText}>{fullName}</Text>
             <Text style={s.emailText}>{email || '—'}</Text>
+
+            {/* Stats row */}
+            <View style={s.statsRow}>
+              <View style={s.statBox}>
+                <Text style={s.statVal}>24</Text>
+                <Text style={s.statLbl}>Orders</Text>
+              </View>
+              <View style={s.statSep} />
+              <View style={s.statBox}>
+                <Text style={s.statVal}>₱4.2K</Text>
+                <Text style={s.statLbl}>Saved</Text>
+              </View>
+              <View style={s.statSep} />
+              <View style={s.statBox}>
+                <Text style={s.statVal}>4.9★</Text>
+                <Text style={s.statLbl}>Rating</Text>
+              </View>
+            </View>
           </View>
 
           <View style={s.body}>
 
+            {/* Membership banner */}
+            <View style={s.membershipBanner}>
+              <View style={s.mbIcon}>
+                <MaterialIcons name="verified" size={20} color={C.white} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.mbTitle}>Pamili Gold Member</Text>
+                <Text style={s.mbSub}>Unlock exclusive deals & free delivery</Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={20} color={C.white} />
+            </View>
+
+            {/* Account Details */}
             <View style={s.section}>
               <Text style={s.sectionLabel}>Account Details</Text>
               <View style={s.card}>
-
                 <EditableRow
                   icon="person-outline"
                   label="First Name"
@@ -209,7 +248,7 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
                 <Divider />
                 <EditableRow
                   icon="email"
-                  label="Email"
+                  label="Email Address"
                   value={email}
                   inputRef={emailRef}
                   focused={activeField === 'email'}
@@ -221,7 +260,9 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
                   autoCapitalize="none"
                 />
                 <Divider />
-                <ReadOnlyRow icon="calendar-today" label="Joined" value={joined} />
+                <ReadOnlyRow icon="phone" label="Phone Number" value="+63 917 123 4567" />
+                <Divider />
+                <ReadOnlyRow icon="calendar-today" label="Member Since" value={joined} />
 
                 {isDirty && (
                   <View style={s.actionRow}>
@@ -231,7 +272,7 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
                     <TouchableOpacity style={s.updateBtn} onPress={handleUpdate} activeOpacity={0.8} disabled={saving}>
                       {saving
                         ? <ActivityIndicator size="small" color={C.white} />
-                        : <Text style={s.updateText}>Update</Text>
+                        : <Text style={s.updateText}>Save Changes</Text>
                       }
                     </TouchableOpacity>
                   </View>
@@ -239,17 +280,40 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
               </View>
             </View>
 
+            {/* Preferences */}
+            <View style={s.section}>
+              <Text style={s.sectionLabel}>Preferences</Text>
+              <View style={s.card}>
+                <SettingsRow
+                  icon="location-on"
+                  label="Delivery Address"
+                  value="Ecoland Drive, Davao City"
+                  onPress={() => {}}
+                />
+                <Divider />
+                <SettingsRow
+                  icon="credit-card"
+                  label="Payment Method"
+                  value="GCash ••••4567"
+                  onPress={() => {}}
+                />
+              </View>
+            </View>
+
+            {/* Settings */}
             <View style={s.section}>
               <Text style={s.sectionLabel}>Settings</Text>
               <View style={s.card}>
-                <SettingsRow icon="lock-outline"  label="Change Password" onPress={() => setShowPassModal(true)} />
+                <SettingsRow icon="lock-outline"       label="Change Password" onPress={() => setShowPassModal(true)} />
                 <Divider />
-                <SettingsRow icon="help-outline"  label="Help & Support"  onPress={() => {}} />
+                <SettingsRow icon="notifications-none" label="Notifications"   onPress={() => {}} />
+                <Divider />
+                <SettingsRow icon="help-outline"        label="Help & Support"  onPress={() => {}} />
               </View>
             </View>
 
             <TouchableOpacity style={s.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
-              <MaterialIcons name="logout" size={20} color={C.error} />
+              <MaterialIcons name="logout" size={18} color={C.error} />
               <Text style={s.logoutText}>Log Out</Text>
             </TouchableOpacity>
 
@@ -257,8 +321,9 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
           </View>
 
           <View style={{ height: 110 }} />
-       </ScrollView>
+        </ScrollView>
 
+        {/* Password Modal */}
         <Modal
           visible={showPassModal}
           transparent
@@ -314,6 +379,8 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
   );
 };
 
+/* ── Sub-components ──────────────────────────────────────── */
+
 const EditableRow = ({
   icon, label, value, inputRef, focused,
   onFocus, onChangeText, returnKeyType,
@@ -358,30 +425,33 @@ const ReadOnlyRow = ({ icon, label, value }) => (
   </View>
 );
 
-const SettingsRow = ({ icon, label, onPress }) => (
+const SettingsRow = ({ icon, label, value, onPress }) => (
   <TouchableOpacity style={r.row} activeOpacity={0.7} onPress={onPress}>
-    <View style={r.iconWrap}>
+    <View style={[r.iconWrap, r.iconWrapGreen]}>
       <MaterialIcons name={icon} size={17} color={C.green} />
     </View>
-    <Text style={[r.value, { flex: 1 }]}>{label}</Text>
+    <View style={{ flex: 1 }}>
+      <Text style={[r.value, { fontSize: 13 }]}>{label}</Text>
+      {value ? <Text style={r.label}>{value}</Text> : null}
+    </View>
     <MaterialIcons name="chevron-right" size={20} color={C.textLight} />
   </TouchableOpacity>
 );
 
 const Divider = () => <View style={r.divider} />;
 
+/* ── StyleSheets ─────────────────────────────────────────── */
+
 const r = StyleSheet.create({
   row: {
     flexDirection:     'row',
     alignItems:        'center',
-    paddingVertical:   11,
+    paddingVertical:   12,
     paddingHorizontal: 14,
     gap:               10,
     backgroundColor:   C.white,
   },
-  rowFocused: {
-    backgroundColor: '#F0FAF0',
-  },
+  rowFocused: { backgroundColor: '#F0FAF0' },
   iconWrap: {
     width:           32,
     height:          32,
@@ -390,9 +460,8 @@ const r = StyleSheet.create({
     alignItems:      'center',
     justifyContent:  'center',
   },
-  iconWrapFocused: {
-    backgroundColor: C.greenFaded,
-  },
+  iconWrapFocused: { backgroundColor: C.greenFaded },
+  iconWrapGreen:   { backgroundColor: C.greenFaded },
   label: {
     fontSize:     10,
     color:        C.textLight,
@@ -400,23 +469,19 @@ const r = StyleSheet.create({
     marginBottom: 1,
   },
   value: {
-    fontSize:        13,
-    color:           C.textDark,
-    fontWeight:      '600',
-    padding:         0,
-    margin:          0,
+    fontSize:   13,
+    color:      C.textDark,
+    fontWeight: '600',
+    padding:    0,
+    margin:     0,
   },
-  valueFocused: {
-    color: C.green,
-  },
+  valueFocused: { color: C.green },
   divider: {
     height:           1,
     backgroundColor:  C.border,
     marginHorizontal: 14,
   },
 });
-
-export default ProfileScreen;
 
 const s = StyleSheet.create({
   root:   { flex: 1, backgroundColor: C.bg },
@@ -425,26 +490,38 @@ const s = StyleSheet.create({
   greenHeader: {
     backgroundColor:         C.green,
     paddingTop:              52,
-    paddingBottom:           36,
+    paddingBottom:           28,
     alignItems:              'center',
     borderBottomLeftRadius:  32,
     borderBottomRightRadius: 32,
   },
+  headerTopRow: {
+    flexDirection:     'row',
+    justifyContent:    'space-between',
+    alignItems:        'center',
+    width:             '100%',
+    paddingHorizontal: 20,
+    marginBottom:      20,
+  },
   pageTitle: {
-    fontSize:     16,
-    fontWeight:   '700',
-    color:        'rgba(255,255,255,0.85)',
-    marginBottom: 20,
+    fontSize:      16,
+    fontWeight:    '700',
+    color:         'rgba(255,255,255,0.9)',
     letterSpacing: 0.3,
   },
-  avatarWrap: {
-    position:     'relative',
-    marginBottom: 14,
+  settingsBtn: {
+    width:           36,
+    height:          36,
+    borderRadius:    18,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems:      'center',
+    justifyContent:  'center',
   },
+  avatarWrap:   { position: 'relative', marginBottom: 12 },
   avatarCircle: {
-    width:           96,
-    height:          96,
-    borderRadius:    48,
+    width:           88,
+    height:          88,
+    borderRadius:    44,
     backgroundColor: C.greenFaded,
     alignItems:      'center',
     justifyContent:  'center',
@@ -455,30 +532,59 @@ const s = StyleSheet.create({
     position:        'absolute',
     bottom:          2,
     right:           2,
-    width:           28,
-    height:          28,
-    borderRadius:    14,
+    width:           26,
+    height:          26,
+    borderRadius:    13,
     backgroundColor: C.greenDark,
     alignItems:      'center',
     justifyContent:  'center',
     borderWidth:     2,
     borderColor:     C.white,
   },
-  nameText: {
-    fontSize:     20,
-    fontWeight:   '800',
-    color:        C.white,
-    marginBottom: 4,
-  },
-  emailText: {
-    fontSize:   13,
-    color:      'rgba(255,255,255,0.75)',
-    fontWeight: '500',
-  },
+  nameText:  { fontSize: 20, fontWeight: '800', color: C.white, marginBottom: 3 },
+  emailText: { fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: '500', marginBottom: 18 },
 
-  body: {
-    paddingTop: 22,
+  statsRow: {
+    flexDirection:    'row',
+    backgroundColor:  'rgba(255,255,255,0.12)',
+    borderRadius:     14,
+    overflow:         'hidden',
+    marginHorizontal: 24,
+    width:            '85%',
   },
+  statBox: {
+    flex:        1,
+    alignItems:  'center',
+    paddingVertical: 12,
+    gap:         3,
+  },
+  statSep:  { width: 1, backgroundColor: 'rgba(255,255,255,0.2)' },
+  statVal:  { fontSize: 17, fontWeight: '800', color: C.white },
+  statLbl:  { fontSize: 10, color: 'rgba(255,255,255,0.7)', fontWeight: '500' },
+
+  body: { paddingTop: 18 },
+
+  membershipBanner: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    gap:               12,
+    backgroundColor:   C.accent,
+    marginHorizontal:  18,
+    marginBottom:      18,
+    borderRadius:      14,
+    paddingVertical:   14,
+    paddingHorizontal: 16,
+  },
+  mbIcon: {
+    width:           36,
+    height:          36,
+    borderRadius:    18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems:      'center',
+    justifyContent:  'center',
+  },
+  mbTitle: { fontSize: 13, fontWeight: '700', color: C.white },
+  mbSub:   { fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
 
   section: {
     marginHorizontal: 18,
@@ -505,44 +611,32 @@ const s = StyleSheet.create({
   },
 
   actionRow: {
-    flexDirection:     'row',
-    gap:               10,
-    padding:           14,
-    borderTopWidth:    1,
-    borderTopColor:    C.border,
-    backgroundColor:   '#FAFFFE',
+    flexDirection:   'row',
+    gap:             10,
+    padding:         14,
+    borderTopWidth:  1,
+    borderTopColor:  C.border,
+    backgroundColor: '#FAFFFE',
   },
   cancelBtn: {
-    flex:              1,
-    paddingVertical:   11,
-    borderRadius:      10,
-    alignItems:        'center',
-    borderWidth:       1.5,
-    borderColor:       C.border,
-    backgroundColor:   C.white,
+    flex:            1,
+    paddingVertical: 11,
+    borderRadius:    10,
+    alignItems:      'center',
+    borderWidth:     1.5,
+    borderColor:     C.border,
+    backgroundColor: C.white,
   },
-  cancelText: {
-    fontSize:   13,
-    fontWeight: '600',
-    color:      C.textMid,
-  },
+  cancelText: { fontSize: 13, fontWeight: '600', color: C.textMid },
   updateBtn: {
     flex:            2,
     paddingVertical: 11,
     borderRadius:    10,
     alignItems:      'center',
     backgroundColor: C.green,
-    shadowColor:     C.greenDark,
-    shadowOffset:    { width: 0, height: 3 },
-    shadowOpacity:   0.25,
-    shadowRadius:    6,
     elevation:       4,
   },
-  updateText: {
-    fontSize:   13,
-    fontWeight: '700',
-    color:      C.white,
-  },
+  updateText: { fontSize: 13, fontWeight: '700', color: C.white },
 
   logoutBtn: {
     flexDirection:     'row',
@@ -557,48 +651,29 @@ const s = StyleSheet.create({
     borderWidth:       1.5,
     borderColor:       '#FFCDD2',
   },
-  logoutText: {
-    fontSize:   15,
-    fontWeight: '700',
-    color:      C.error,
-  },
-  version: {
-    textAlign:    'center',
-    fontSize:     11,
-    color:        C.textLight,
-    marginBottom: 6,
-  },
+  logoutText: { fontSize: 15, fontWeight: '700', color: C.error },
+  version:    { textAlign: 'center', fontSize: 11, color: C.textLight, marginBottom: 6 },
 });
 
 const m = StyleSheet.create({
   overlay: {
-    flex:            1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent:  'center',
-    alignItems:      'center',
+    flex:              1,
+    backgroundColor:   'rgba(0,0,0,0.45)',
+    justifyContent:    'center',
+    alignItems:        'center',
     paddingHorizontal: 28,
   },
   card: {
-    width:           '100%',
-    backgroundColor: C.white,
-    borderRadius:    24,
+    width:             '100%',
+    backgroundColor:   C.white,
+    borderRadius:      24,
     paddingHorizontal: 24,
-    paddingTop:      20,
-    paddingBottom:   24,
-    alignItems:      'center',
-    shadowColor:     '#000',
-    shadowOffset:    { width: 0, height: 8 },
-    shadowOpacity:   0.18,
-    shadowRadius:    20,
-    elevation:       12,
+    paddingTop:        20,
+    paddingBottom:     24,
+    alignItems:        'center',
+    elevation:         12,
   },
-  handle: {
-    width:           40,
-    height:          4,
-    borderRadius:    2,
-    backgroundColor: C.border,
-    marginBottom:    18,
-  },
+  handle:     { width: 40, height: 4, borderRadius: 2, backgroundColor: C.border, marginBottom: 18 },
   iconCircle: {
     width:           60,
     height:          60,
@@ -608,18 +683,8 @@ const m = StyleSheet.create({
     justifyContent:  'center',
     marginBottom:    14,
   },
-  title: {
-    fontSize:     18,
-    fontWeight:   '800',
-    color:        C.textDark,
-    marginBottom: 6,
-  },
-  subtitle: {
-    fontSize:     13,
-    color:        C.textLight,
-    marginBottom: 22,
-    textAlign:    'center',
-  },
+  title:    { fontSize: 18, fontWeight: '800', color: C.textDark, marginBottom: 6 },
+  subtitle: { fontSize: 13, color: C.textLight, marginBottom: 22, textAlign: 'center' },
   inputBox: {
     flexDirection:     'row',
     alignItems:        'center',
@@ -632,17 +697,8 @@ const m = StyleSheet.create({
     height:            50,
     marginBottom:      20,
   },
-  input: {
-    flex:     1,
-    fontSize: 15,
-    color:    C.textDark,
-    padding:  0,
-  },
-  btnRow: {
-    flexDirection: 'row',
-    width:         '100%',
-    gap:           10,
-  },
+  input:     { flex: 1, fontSize: 15, color: C.textDark, padding: 0 },
+  btnRow:    { flexDirection: 'row', width: '100%', gap: 10 },
   cancelBtn: {
     flex:            1,
     paddingVertical: 13,
@@ -651,26 +707,16 @@ const m = StyleSheet.create({
     borderWidth:     1.5,
     borderColor:     C.border,
   },
-  cancelText: {
-    fontSize:   14,
-    fontWeight: '600',
-    color:      C.textMid,
-  },
+  cancelText: { fontSize: 14, fontWeight: '600', color: C.textMid },
   saveBtn: {
     flex:            2,
     paddingVertical: 13,
     borderRadius:    12,
     alignItems:      'center',
     backgroundColor: C.green,
-    shadowColor:     C.greenDark,
-    shadowOffset:    { width: 0, height: 3 },
-    shadowOpacity:   0.25,
-    shadowRadius:    6,
     elevation:       4,
   },
-  saveText: {
-    fontSize:   14,
-    fontWeight: '700',
-    color:      C.white,
-  },
+  saveText: { fontSize: 14, fontWeight: '700', color: C.white },
 });
+
+export default ProfileScreen;
