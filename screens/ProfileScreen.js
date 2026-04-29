@@ -17,6 +17,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { sql } from '../api/db';
 import { clearSession } from '../api/session';
+import LocationModal from '../components/LocationModal';
 
 const C = {
   green:      '#2E7D32',
@@ -40,6 +41,7 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
   const [firstName,  setFirstName]  = useState(user?.first_name ?? '');
   const [lastName,   setLastName]   = useState(user?.last_name  ?? '');
   const [email,      setEmail]      = useState(user?.email      ?? '');
+  const [address,    setAddress]    = useState(user?.address    ?? '');
   const [activeField, setActiveField] = useState(null);
   const [isDirty,    setIsDirty]    = useState(false);
   const [saving,        setSaving]        = useState(false);
@@ -47,6 +49,7 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
   const [newPassword,   setNewPassword]   = useState('');
   const [showPass,      setShowPass]      = useState(false);
   const [passLoading,   setPassLoading]   = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
 
   const firstRef = useRef();
   const lastRef  = useRef();
@@ -69,6 +72,7 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
     setFirstName(user?.first_name ?? '');
     setLastName(user?.last_name   ?? '');
     setEmail(user?.email          ?? '');
+    setAddress(user?.address      ?? '');
     setIsDirty(false);
     dismissEditing();
   };
@@ -96,12 +100,19 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
         UPDATE users
         SET first_name = ${firstName.trim()},
             last_name  = ${lastName.trim()},
-            email      = ${email.trim()}
+            email      = ${email.trim()},
+            address    = ${address.trim() || null}
         WHERE id = ${user.id}
       `;
       setIsDirty(false);
       if (onUserUpdate) {
-        onUserUpdate({ ...user, first_name: firstName.trim(), last_name: lastName.trim(), email: email.trim() });
+        onUserUpdate({
+          ...user,
+          first_name: firstName.trim(),
+          last_name:  lastName.trim(),
+          email:      email.trim(),
+          address:    address.trim() || null,
+        });
       }
       Alert.alert('Success', 'Profile updated successfully!');
     } catch (err) {
@@ -153,6 +164,23 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
+  // Called when LocationModal saves an address
+  const handleAddressSave = async (newAddress) => {
+    setAddress(newAddress);
+    // Save immediately to DB
+    try {
+      await sql`
+        UPDATE users SET address = ${newAddress} WHERE id = ${user.id}
+      `;
+      if (onUserUpdate) {
+        onUserUpdate({ ...user, address: newAddress });
+      }
+      Alert.alert('Saved', 'Your delivery address has been updated.');
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Failed to save address.');
+    }
+  };
+
   return (
     <TouchableWithoutFeedback onPress={dismissEditing}>
       <SafeAreaView style={s.root}>
@@ -163,7 +191,7 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* ── Grab-style header ── */}
+          {/* ── Green header ── */}
           <View style={s.greenHeader}>
             <View style={s.headerTopRow}>
               <Text style={s.pageTitle}></Text>
@@ -182,6 +210,28 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
             </View>
             <Text style={s.nameText}>{fullName}</Text>
             <Text style={s.emailText}>{email || '—'}</Text>
+
+            {/* Address chip under email */}
+            {address ? (
+              <TouchableOpacity
+                style={s.addressChip}
+                onPress={() => setShowLocationModal(true)}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="location-on" size={12} color="rgba(255,255,255,0.9)" />
+                <Text style={s.addressChipText} numberOfLines={1}>{address}</Text>
+                <MaterialIcons name="edit" size={11} color="rgba(255,255,255,0.7)" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={s.addAddressChip}
+                onPress={() => setShowLocationModal(true)}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="add-location-alt" size={13} color="rgba(255,255,255,0.8)" />
+                <Text style={s.addAddressText}>Add delivery address</Text>
+              </TouchableOpacity>
+            )}
 
             {/* Stats row */}
             <View style={s.statsRow}>
@@ -284,11 +334,13 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
             <View style={s.section}>
               <Text style={s.sectionLabel}>Preferences</Text>
               <View style={s.card}>
+                {/* Delivery Address row — taps open LocationModal */}
                 <SettingsRow
                   icon="location-on"
                   label="Delivery Address"
-                  value="Ecoland Drive, Davao City"
-                  onPress={() => {}}
+                  value={address || 'Not set — tap to add'}
+                  valueColor={address ? C.textLight : C.accent}
+                  onPress={() => setShowLocationModal(true)}
                 />
                 <Divider />
                 <SettingsRow
@@ -323,7 +375,15 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
           <View style={{ height: 110 }} />
         </ScrollView>
 
-        {/* Password Modal */}
+        {/* ── Location Modal ── */}
+        <LocationModal
+          visible={showLocationModal}
+          currentValue={address}
+          onClose={() => setShowLocationModal(false)}
+          onSave={handleAddressSave}
+        />
+
+        {/* ── Password Modal ── */}
         <Modal
           visible={showPassModal}
           transparent
@@ -425,14 +485,14 @@ const ReadOnlyRow = ({ icon, label, value }) => (
   </View>
 );
 
-const SettingsRow = ({ icon, label, value, onPress }) => (
+const SettingsRow = ({ icon, label, value, onPress, valueColor }) => (
   <TouchableOpacity style={r.row} activeOpacity={0.7} onPress={onPress}>
     <View style={[r.iconWrap, r.iconWrapGreen]}>
       <MaterialIcons name={icon} size={17} color={C.green} />
     </View>
     <View style={{ flex: 1 }}>
       <Text style={[r.value, { fontSize: 13 }]}>{label}</Text>
-      {value ? <Text style={r.label}>{value}</Text> : null}
+      {value ? <Text style={[r.label, valueColor && { color: valueColor }]}>{value}</Text> : null}
     </View>
     <MaterialIcons name="chevron-right" size={20} color={C.textLight} />
   </TouchableOpacity>
@@ -542,7 +602,43 @@ const s = StyleSheet.create({
     borderColor:     C.white,
   },
   nameText:  { fontSize: 20, fontWeight: '800', color: C.white, marginBottom: 3 },
-  emailText: { fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: '500', marginBottom: 18 },
+  emailText: { fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: '500', marginBottom: 8 },
+
+  // Address chips under email
+  addressChip: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    gap:               5,
+    backgroundColor:   'rgba(255,255,255,0.15)',
+    borderRadius:      20,
+    paddingHorizontal: 12,
+    paddingVertical:   5,
+    marginBottom:      14,
+    maxWidth:          '80%',
+  },
+  addressChipText: {
+    fontSize:   11,
+    color:      'rgba(255,255,255,0.9)',
+    fontWeight: '600',
+    flex:       1,
+  },
+  addAddressChip: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    gap:               5,
+    backgroundColor:   'rgba(255,255,255,0.1)',
+    borderRadius:      20,
+    borderWidth:       1,
+    borderColor:       'rgba(255,255,255,0.3)',
+    paddingHorizontal: 12,
+    paddingVertical:   5,
+    marginBottom:      14,
+  },
+  addAddressText: {
+    fontSize:   11,
+    color:      'rgba(255,255,255,0.75)',
+    fontWeight: '600',
+  },
 
   statsRow: {
     flexDirection:    'row',
@@ -553,10 +649,10 @@ const s = StyleSheet.create({
     width:            '85%',
   },
   statBox: {
-    flex:        1,
-    alignItems:  'center',
+    flex:            1,
+    alignItems:      'center',
     paddingVertical: 12,
-    gap:         3,
+    gap:             3,
   },
   statSep:  { width: 1, backgroundColor: 'rgba(255,255,255,0.2)' },
   statVal:  { fontSize: 17, fontWeight: '800', color: C.white },
