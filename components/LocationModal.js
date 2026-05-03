@@ -9,11 +9,12 @@ import {
   StyleSheet,
   Animated,
   ActivityIndicator,
+  FlatList,
   Keyboard,
   Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
+import { sql } from '../api/db';
 
 const C = {
   green:      '#2E7D32',
@@ -38,25 +39,54 @@ const C = {
  *
  * Props:
  *   visible      {boolean}
- *   currentValue {string}   — pre-fills the input
+ *   currentValue {string}   — pre-fills the custom input
  *   onClose      {() => void}
  *   onSave       {(address: string) => void}
  */
 const LocationModal = ({ visible, currentValue = '', onClose, onSave }) => {
-  const slideAnim   = useRef(new Animated.Value(600)).current;
-  const fadeAnim    = useRef(new Animated.Value(0)).current;
-  const pulseAnim   = useRef(new Animated.Value(1)).current;
+  const slideAnim = useRef(new Animated.Value(600)).current;
+  const fadeAnim  = useRef(new Animated.Value(0)).current;
 
-  const [address,   setAddress]   = useState(currentValue);
-  const [scanning,  setScanning]  = useState(false);
-  const [scanError, setScanError] = useState('');
-  const inputRef = useRef();
+  const [locations,    setLocations]    = useState([]);   // all active locations from DB
+  const [loadingLocs,  setLoadingLocs]  = useState(false);
+  const [search,       setSearch]       = useState('');
+  const [selected,     setSelected]     = useState(null); // { id, label, area }
+  const [customText,   setCustomText]   = useState('');
+  const [useCustom,    setUseCustom]    = useState(false);
+  const [error,        setError]        = useState('');
 
-  // Sync pre-fill when modal opens
+  const searchRef = useRef();
+
+  // ── Fetch locations from DB ──────────────────────────────
+  const fetchLocations = async () => {
+    setLoadingLocs(true);
+    try {
+      const rows = await sql`
+        SELECT id, label, area
+        FROM locations
+        WHERE status = 'active'
+        ORDER BY area ASC, label ASC
+      `;
+      setLocations(rows);
+    } catch (err) {
+      setError('Could not load locations. You can type your address manually.');
+    } finally {
+      setLoadingLocs(false);
+    }
+  };
+
+  // ── Slide animation on visibility change ────────────────
   useEffect(() => {
     if (visible) {
-      setAddress(currentValue);
-      setScanError('');
+      // Reset state when opening
+      setSearch('');
+      setError('');
+      setUseCustom(false);
+      setSelected(null);
+      setCustomText(currentValue);
+
+      fetchLocations();
+
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1, duration: 260, useNativeDriver: true,
@@ -64,10 +94,7 @@ const LocationModal = ({ visible, currentValue = '', onClose, onSave }) => {
         Animated.spring(slideAnim, {
           toValue: 0, tension: 70, friction: 12, useNativeDriver: true,
         }),
-      ]).start(() => {
-        // slight delay so keyboard doesn't fight the animation
-        setTimeout(() => inputRef.current?.focus(), 100);
-      });
+      ]).start();
     } else {
       Animated.parallel([
         Animated.timing(fadeAnim, {
@@ -80,69 +107,120 @@ const LocationModal = ({ visible, currentValue = '', onClose, onSave }) => {
     }
   }, [visible]);
 
-  // Pulse animation for the scan button while scanning
-  useEffect(() => {
-    if (scanning) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.12, duration: 600, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1,    duration: 600, useNativeDriver: true }),
-        ])
-      ).start();
-    } else {
-      pulseAnim.stopAnimation();
-      pulseAnim.setValue(1);
-    }
-  }, [scanning]);
+  // ── Filtered list based on search ───────────────────────
+  const filtered = locations.filter(loc => {
+    const q = search.toLowerCase();
+    return (
+      loc.label.toLowerCase().includes(q) ||
+      loc.area.toLowerCase().includes(q)
+    );
+  });
 
-  const handleScan = async () => {
-    setScanError('');
-    setScanning(true);
+  // Group filtered results by area
+  const grouped = filtered.reduce((acc, loc) => {
+    if (!acc[loc.area]) acc[loc.area] = [];
+    acc[loc.area].push(loc);
+    return acc;
+  }, {});
+
+  const groupedKeys = Object.keys(grouped).sort();
+
+  // ── Save handler ─────────────────────────────────────────
+  const handleSave = () => {
     Keyboard.dismiss();
-
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setScanError('Location permission denied. Please enable it in Settings.');
-        setScanning(false);
+    if (useCustom) {
+      if (!customText.trim()) {
+        setError('Please enter your address.');
         return;
       }
-
-      const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      const [place] = await Location.reverseGeocodeAsync({
-        latitude:  loc.coords.latitude,
-        longitude: loc.coords.longitude,
-      });
-
-      if (place) {
-        const parts = [
-          place.street,
-          place.district,
-          place.city || place.subregion,
-          place.region,
-        ].filter(Boolean);
-        setAddress(parts.join(', '));
-      } else {
-        setScanError('Could not resolve address. Please type it manually.');
+      onSave(customText.trim());
+    } else {
+      if (!selected) {
+        setError('Please select a location or type a custom address.');
+        return;
       }
-    } catch (err) {
-      setScanError('Failed to get location. Please try again.');
-    } finally {
-      setScanning(false);
+      // Format: "Gate 1 Form 1378 · Main Compound"
+      onSave(`${selected.label} · ${selected.area}`);
     }
+    onClose();
   };
 
-  const handleSave = () => {
-    if (!address.trim()) {
-      setScanError('Please enter or scan an address.');
-      return;
+  // ── Render a single location row ─────────────────────────
+  const LocationRow = ({ item }) => {
+    const isSelected = selected?.id === item.id && !useCustom;
+    return (
+      <TouchableOpacity
+        style={[ls.row, isSelected && ls.rowSelected]}
+        onPress={() => {
+          setSelected(item);
+          setUseCustom(false);
+          setError('');
+        }}
+        activeOpacity={0.7}
+      >
+        <View style={[ls.dot, isSelected && ls.dotSelected]}>
+          {isSelected && <View style={ls.dotInner} />}
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[ls.rowLabel, isSelected && ls.rowLabelSelected]}>
+            {item.label}
+          </Text>
+          <Text style={ls.rowArea}>{item.area}</Text>
+        </View>
+        {isSelected && (
+          <MaterialIcons name="check-circle" size={18} color={C.green} />
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  // ── What to render inside the list ──────────────────────
+  const renderContent = () => {
+    if (loadingLocs) {
+      return (
+        <View style={s.centerWrap}>
+          <ActivityIndicator size="small" color={C.green} />
+          <Text style={s.loadingText}>Loading locations…</Text>
+        </View>
+      );
     }
-    Keyboard.dismiss();
-    onSave(address.trim());
-    onClose();
+
+    if (locations.length === 0) {
+      return (
+        <View style={s.centerWrap}>
+          <MaterialIcons name="location-off" size={32} color={C.textLight} />
+          <Text style={s.emptyTitle}>No locations found</Text>
+          <Text style={s.emptyText}>Use the custom field below to type your address.</Text>
+        </View>
+      );
+    }
+
+    if (filtered.length === 0 && search.length > 0) {
+      return (
+        <View style={s.centerWrap}>
+          <MaterialIcons name="search-off" size={28} color={C.textLight} />
+          <Text style={s.emptyTitle}>No matches for "{search}"</Text>
+          <Text style={s.emptyText}>Try a different keyword or type your address below.</Text>
+        </View>
+      );
+    }
+
+    return (
+      <>
+        {groupedKeys.map(area => (
+          <View key={area}>
+            {/* Area group header */}
+            <View style={ls.areaHeader}>
+              <MaterialIcons name="place" size={12} color={C.textLight} />
+              <Text style={ls.areaLabel}>{area}</Text>
+            </View>
+            {grouped[area].map(item => (
+              <LocationRow key={String(item.id)} item={item} />
+            ))}
+          </View>
+        ))}
+      </>
+    );
   };
 
   return (
@@ -172,92 +250,96 @@ const LocationModal = ({ visible, currentValue = '', onClose, onSave }) => {
             <MaterialIcons name="location-on" size={20} color={C.green} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={s.title}>Delivery Address</Text>
-            <Text style={s.subtitle}>Type your address or scan your location</Text>
+            <Text style={s.title}>Delivery Location</Text>
+            <Text style={s.subtitle}>Pick from a location or type your own</Text>
           </View>
           <TouchableOpacity style={s.closeBtn} onPress={onClose} activeOpacity={0.7}>
             <MaterialIcons name="close" size={16} color={C.textMid} />
           </TouchableOpacity>
         </View>
 
-        {/* Input area */}
-        <View style={s.body}>
-
-          {/* Text input */}
-          <View style={s.inputLabel}>
-            <MaterialIcons name="edit-location-alt" size={14} color={C.textLight} />
-            <Text style={s.inputLabelText}>Address</Text>
-          </View>
-          <View style={s.inputBox}>
-            <MaterialIcons name="home" size={18} color={C.textLight} style={{ marginRight: 10 }} />
-            <TextInput
-              ref={inputRef}
-              style={s.input}
-              placeholder="e.g. 123 Rizal St, Davao City"
-              placeholderTextColor={C.textLight}
-              value={address}
-              onChangeText={t => { setAddress(t); setScanError(''); }}
-              multiline
-              numberOfLines={2}
-              returnKeyType="done"
-              blurOnSubmit
-              autoCapitalize="words"
-            />
-            {address.length > 0 && (
-              <TouchableOpacity onPress={() => setAddress('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <MaterialIcons name="cancel" size={16} color={C.textLight} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Divider with OR */}
-          <View style={s.dividerRow}>
-            <View style={s.divLine} />
-            <Text style={s.divText}>or</Text>
-            <View style={s.divLine} />
-          </View>
-
-          {/* Scan button */}
-          <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-            <TouchableOpacity
-              style={[s.scanBtn, scanning && s.scanBtnActive]}
-              onPress={handleScan}
-              activeOpacity={0.85}
-              disabled={scanning}
-            >
-              {scanning ? (
-                <>
-                  <ActivityIndicator size="small" color={C.green} />
-                  <Text style={s.scanBtnText}>Scanning your location…</Text>
-                </>
-              ) : (
-                <>
-                  <MaterialIcons name="my-location" size={18} color={C.green} />
-                  <Text style={s.scanBtnText}>Use My Current Location</Text>
-                </>
-              )}
+        {/* Search bar */}
+        <View style={s.searchWrap}>
+          <MaterialIcons name="search" size={18} color={C.textLight} style={{ marginRight: 8 }} />
+          <TextInput
+            ref={searchRef}
+            style={s.searchInput}
+            placeholder="Search gates, buildings, areas…"
+            placeholderTextColor={C.textLight}
+            value={search}
+            onChangeText={t => { setSearch(t); setError(''); }}
+            returnKeyType="search"
+            autoCapitalize="none"
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <MaterialIcons name="cancel" size={16} color={C.textLight} />
             </TouchableOpacity>
-          </Animated.View>
-
-          {/* Scan hint */}
-          {!scanError && !scanning && (
-            <View style={s.hintRow}>
-              <MaterialIcons name="info-outline" size={12} color={C.textLight} />
-              <Text style={s.hintText}>
-                We'll fill in your address automatically using GPS.
-              </Text>
-            </View>
           )}
-
-          {/* Error message */}
-          {!!scanError && (
-            <View style={s.errorRow}>
-              <MaterialIcons name="error-outline" size={13} color={C.error} />
-              <Text style={s.errorText}>{scanError}</Text>
-            </View>
-          )}
-
         </View>
+
+        {/* Locations list */}
+        <View style={s.listWrap}>
+          {renderContent()}
+        </View>
+
+        {/* Divider with OR */}
+        <View style={s.dividerRow}>
+          <View style={s.divLine} />
+          <Text style={s.divText}>or type manually</Text>
+          <View style={s.divLine} />
+        </View>
+
+        {/* Custom address input */}
+        <View style={s.customSection}>
+          <TouchableOpacity
+            style={[s.customToggle, useCustom && s.customToggleActive]}
+            onPress={() => {
+              setUseCustom(v => !v);
+              setSelected(null);
+              setError('');
+            }}
+            activeOpacity={0.8}
+          >
+            <View style={[s.customCheck, useCustom && s.customCheckActive]}>
+              {useCustom && <MaterialIcons name="check" size={12} color={C.white} />}
+            </View>
+            <Text style={[s.customToggleText, useCustom && { color: C.green }]}>
+              Enter a custom address
+            </Text>
+          </TouchableOpacity>
+
+          {useCustom && (
+            <View style={s.customInputBox}>
+              <MaterialIcons name="home" size={16} color={C.textLight} style={{ marginRight: 8 }} />
+              <TextInput
+                style={s.customInput}
+                placeholder="e.g. Block 4, Lot 12, Phase 2…"
+                placeholderTextColor={C.textLight}
+                value={customText}
+                onChangeText={t => { setCustomText(t); setError(''); }}
+                multiline
+                returnKeyType="done"
+                blurOnSubmit
+                autoCapitalize="words"
+                autoFocus
+              />
+              {customText.length > 0 && (
+                <TouchableOpacity onPress={() => setCustomText('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <MaterialIcons name="cancel" size={15} color={C.textLight} />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Error */}
+        {!!error && (
+          <View style={s.errorRow}>
+            <MaterialIcons name="error-outline" size={13} color={C.error} />
+            <Text style={s.errorText}>{error}</Text>
+          </View>
+        )}
 
         {/* Footer */}
         <View style={s.footer}>
@@ -265,13 +347,15 @@ const LocationModal = ({ visible, currentValue = '', onClose, onSave }) => {
             <Text style={s.cancelText}>Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[s.saveBtn, !address.trim() && s.saveBtnDisabled]}
+            style={[
+              s.saveBtn,
+              (!selected && (!useCustom || !customText.trim())) && s.saveBtnDisabled,
+            ]}
             onPress={handleSave}
             activeOpacity={0.85}
-            disabled={!address.trim()}
           >
             <MaterialIcons name="check" size={16} color={C.white} />
-            <Text style={s.saveText}>Save Address</Text>
+            <Text style={s.saveText}>Save Location</Text>
           </TouchableOpacity>
         </View>
 
@@ -282,6 +366,69 @@ const LocationModal = ({ visible, currentValue = '', onClose, onSave }) => {
 
 export default LocationModal;
 
+// ── Location row styles ───────────────────────────────────────────
+const ls = StyleSheet.create({
+  areaHeader: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    gap:               5,
+    paddingHorizontal: 14,
+    paddingTop:        10,
+    paddingBottom:     4,
+  },
+  areaLabel: {
+    fontSize:      10,
+    fontWeight:    '700',
+    color:         C.textLight,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  row: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    gap:               12,
+    paddingHorizontal: 14,
+    paddingVertical:   11,
+    backgroundColor:   C.white,
+  },
+  rowSelected: {
+    backgroundColor: C.greenFaded,
+  },
+  dot: {
+    width:           18,
+    height:          18,
+    borderRadius:    9,
+    borderWidth:     2,
+    borderColor:     C.border,
+    alignItems:      'center',
+    justifyContent:  'center',
+  },
+  dotSelected: {
+    borderColor: C.green,
+  },
+  dotInner: {
+    width:           8,
+    height:          8,
+    borderRadius:    4,
+    backgroundColor: C.green,
+  },
+  rowLabel: {
+    fontSize:   13,
+    fontWeight: '600',
+    color:      C.textDark,
+  },
+  rowLabelSelected: {
+    color: C.green,
+  },
+  rowArea: {
+    fontSize:   11,
+    color:      C.textLight,
+    fontWeight: '500',
+    marginTop:  1,
+  },
+});
+
+// ── Main styles ───────────────────────────────────────────────────
 const s = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -300,7 +447,8 @@ const s = StyleSheet.create({
     shadowOpacity:        0.15,
     shadowRadius:         20,
     elevation:            24,
-    paddingBottom:        Platform.OS === 'ios' ? 34 : 24,
+    maxHeight:            '88%',
+    paddingBottom:        Platform.OS === 'ios' ? 34 : 20,
   },
   handle: {
     width:           44,
@@ -341,37 +489,111 @@ const s = StyleSheet.create({
     justifyContent:  'center',
   },
 
-  // Body
-  body: {
-    paddingHorizontal: 20,
-    paddingTop:        18,
-    paddingBottom:     8,
-  },
-  inputLabel: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    gap:            5,
-    marginBottom:   7,
-  },
-  inputLabelText: {
-    fontSize:   11,
-    fontWeight: '700',
-    color:      C.textLight,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  inputBox: {
+  // Search
+  searchWrap: {
     flexDirection:     'row',
-    alignItems:        'flex-start',
+    alignItems:        'center',
     backgroundColor:   C.bg,
-    borderRadius:      14,
+    borderRadius:      12,
+    borderWidth:       1.5,
+    borderColor:       C.border,
+    marginHorizontal:  16,
+    marginVertical:    12,
+    paddingHorizontal: 12,
+    paddingVertical:   10,
+  },
+  searchInput: {
+    flex:       1,
+    fontSize:   14,
+    color:      C.textDark,
+    fontWeight: '500',
+    padding:    0,
+  },
+
+  // List
+  listWrap: {
+    maxHeight:        220,
+    borderTopWidth:   1,
+    borderTopColor:   C.border,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+    backgroundColor:  C.white,
+  },
+
+  centerWrap: {
+    alignItems:      'center',
+    justifyContent:  'center',
+    paddingVertical: 24,
+    gap:             6,
+  },
+  loadingText: { fontSize: 12, color: C.textLight, fontWeight: '500' },
+  emptyTitle:  { fontSize: 13, fontWeight: '700', color: C.textMid },
+  emptyText:   { fontSize: 11, color: C.textLight, textAlign: 'center', paddingHorizontal: 32 },
+
+  // Divider
+  dividerRow: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    marginHorizontal:  16,
+    marginVertical:    12,
+    gap:               10,
+  },
+  divLine: { flex: 1, height: 1, backgroundColor: C.border },
+  divText: { fontSize: 11, color: C.textLight, fontWeight: '600' },
+
+  // Custom address
+  customSection: {
+    paddingHorizontal: 16,
+    gap:               10,
+    marginBottom:      4,
+  },
+  customToggle: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    gap:               10,
+    backgroundColor:   C.bg,
+    borderRadius:      12,
     borderWidth:       1.5,
     borderColor:       C.border,
     paddingHorizontal: 14,
-    paddingVertical:   12,
-    minHeight:         56,
+    paddingVertical:   11,
   },
-  input: {
+  customToggleActive: {
+    borderColor:     C.green,
+    backgroundColor: C.greenFaded,
+  },
+  customCheck: {
+    width:           20,
+    height:          20,
+    borderRadius:    6,
+    borderWidth:     2,
+    borderColor:     C.border,
+    alignItems:      'center',
+    justifyContent:  'center',
+    backgroundColor: C.white,
+  },
+  customCheckActive: {
+    backgroundColor: C.green,
+    borderColor:     C.green,
+  },
+  customToggleText: {
+    fontSize:   13,
+    fontWeight: '600',
+    color:      C.textMid,
+  },
+  customInputBox: {
+    flexDirection:     'row',
+    alignItems:        'flex-start',
+    backgroundColor:   C.bg,
+    borderRadius:      12,
+    borderWidth:       1.5,
+    borderColor:       C.green,
+    paddingHorizontal: 12,
+    paddingVertical:   10,
+    minHeight:         52,
+    gap:               4,
+  },
+  customInput: {
     flex:       1,
     fontSize:   14,
     color:      C.textDark,
@@ -381,54 +603,17 @@ const s = StyleSheet.create({
     paddingTop: 1,
   },
 
-  // Divider
-  dividerRow: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    marginVertical: 16,
-    gap:            10,
-  },
-  divLine: { flex: 1, height: 1, backgroundColor: C.border },
-  divText: { fontSize: 11, color: C.textLight, fontWeight: '600' },
-
-  // Scan button
-  scanBtn: {
+  // Error
+  errorRow: {
     flexDirection:     'row',
     alignItems:        'center',
-    justifyContent:    'center',
-    gap:               10,
-    backgroundColor:   C.greenFaded,
-    borderRadius:      14,
-    borderWidth:       1.5,
-    borderColor:       C.border,
-    paddingVertical:   14,
-  },
-  scanBtnActive: {
-    borderColor:     C.green,
-    backgroundColor: '#D6EED6',
-  },
-  scanBtnText: {
-    fontSize:   14,
-    fontWeight: '700',
-    color:      C.green,
-  },
-
-  // Hint / error
-  hintRow: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    gap:            5,
-    marginTop:      10,
-  },
-  hintText:  { fontSize: 11, color: C.textLight, fontWeight: '500', flex: 1 },
-  errorRow: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    gap:             6,
-    backgroundColor: C.errorBg,
-    borderRadius:    8,
-    padding:         10,
-    marginTop:       10,
+    gap:               6,
+    backgroundColor:   C.errorBg,
+    borderRadius:      8,
+    paddingHorizontal: 14,
+    paddingVertical:   9,
+    marginHorizontal:  16,
+    marginBottom:      8,
   },
   errorText: { fontSize: 12, color: C.error, fontWeight: '500', flex: 1 },
 
@@ -436,8 +621,8 @@ const s = StyleSheet.create({
   footer: {
     flexDirection:     'row',
     gap:               12,
-    paddingHorizontal: 20,
-    paddingTop:        14,
+    paddingHorizontal: 16,
+    paddingTop:        12,
     borderTopWidth:    1,
     borderTopColor:    C.border,
   },
@@ -466,6 +651,10 @@ const s = StyleSheet.create({
     shadowOpacity:     0.3,
     shadowRadius:      8,
   },
-  saveBtnDisabled: { backgroundColor: '#B0BEB0', elevation: 0, shadowOpacity: 0 },
+  saveBtnDisabled: {
+    backgroundColor: '#B0BEB0',
+    elevation:       0,
+    shadowOpacity:   0,
+  },
   saveText: { fontSize: 14, fontWeight: '700', color: C.white },
 });

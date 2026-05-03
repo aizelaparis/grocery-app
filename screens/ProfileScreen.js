@@ -164,22 +164,21 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
-  // Called when LocationModal saves an address
-  const handleAddressSave = async (newAddress) => {
-    setAddress(newAddress);
-    // Save immediately to DB
-    try {
-      await sql`
-        UPDATE users SET address = ${newAddress} WHERE id = ${user.id}
-      `;
-      if (onUserUpdate) {
-        onUserUpdate({ ...user, address: newAddress });
-      }
-      Alert.alert('Saved', 'Your delivery address has been updated.');
-    } catch (err) {
-      Alert.alert('Error', err.message || 'Failed to save address.');
+const handleAddressSave = async (newAddress) => {
+  setAddress(newAddress);
+  // Save immediately to DB
+  try {
+    await sql`
+      UPDATE users SET address = ${newAddress} WHERE id = ${user.id}
+    `;
+    if (onUserUpdate) {
+      onUserUpdate({ ...user, address: newAddress });
     }
-  };
+    Alert.alert('Saved', 'Your delivery address has been updated.');
+  } catch (err) {
+    Alert.alert('Error', err.message || 'Failed to save address.');
+  }
+};
 
   return (
     <TouchableWithoutFeedback onPress={dismissEditing}>
