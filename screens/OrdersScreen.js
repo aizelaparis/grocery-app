@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,9 +7,12 @@ import {
   TouchableOpacity,
   Alert,
   StatusBar,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
+import { sql } from '../api/db';
 
 const C = {
   green:      '#2E7D32',
@@ -28,37 +31,68 @@ const C = {
   errorBg:    '#FFEBEE',
 };
 
-const TRACK_STEPS = ['Placed', 'Confirmed', 'Picked up', 'On the way', 'Delivered'];
-
-// Set to empty arrays for empty state; populate when real data is available
-const ORDERS = {
-  active:    [],
-  past:      [],
-  cancelled: [],
+// ── Status config ────────────────────────────────────────────────
+const STATUS_CONFIG = {
+  pending: {
+    label:   'Pending',
+    color:   '#F57C00',
+    bg:      '#FFF3E0',
+    icon:    'hourglass-empty',
+    step:    1,
+  },
+  confirmed: {
+    label:   'Confirmed',
+    color:   '#1565C0',
+    bg:      '#E3F2FD',
+    icon:    'check-circle',
+    step:    2,
+  },
+  in_transit: {
+    label:   'On the Way',
+    color:   C.accent,
+    bg:      C.accentBg,
+    icon:    'local-shipping',
+    step:    3,
+  },
+  delivered: {
+    label:   'Delivered',
+    color:   C.green,
+    bg:      C.greenFaded,
+    icon:    'done-all',
+    step:    4,
+  },
+  cancelled: {
+    label:   'Cancelled',
+    color:   C.error,
+    bg:      C.errorBg,
+    icon:    'cancel',
+    step:    0,
+  },
 };
 
-const STATUS_STYLES = {
-  delivered: { bg: C.greenFaded, text: C.green },
-  transit:   { bg: C.accentBg,   text: C.accent },
-  cancelled: { bg: C.errorBg,    text: C.error  },
-};
+const TRACK_STEPS = [
+  { key: 'pending',    label: 'Placed',     icon: 'receipt' },
+  { key: 'confirmed',  label: 'Confirmed',  icon: 'check-circle' },
+  { key: 'in_transit', label: 'On the Way', icon: 'local-shipping' },
+  { key: 'delivered',  label: 'Delivered',  icon: 'done-all' },
+];
 
 const TABS = [
-  { key: 'active',    label: 'Active'      },
-  { key: 'past',      label: 'Past Orders' },
-  { key: 'cancelled', label: 'Cancelled'   },
+  { key: 'active',    label: 'Active'       },
+  { key: 'past',      label: 'Past Orders'  },
+  { key: 'cancelled', label: 'Cancelled'    },
 ];
 
 const EMPTY_STATES = {
   active: {
     icon:  '🛒',
     title: 'No active orders',
-    sub:   "You don't have any orders in progress. Place an order and it'll appear here.",
+    sub:   "You don't have any orders in progress right now.",
   },
   past: {
     icon:  '📋',
     title: 'No past orders yet',
-    sub:   "Your completed orders will show up here once you've shopped with us.",
+    sub:   'Your completed orders will appear here.',
   },
   cancelled: {
     icon:  '🚫',
@@ -67,72 +101,106 @@ const EMPTY_STATES = {
   },
 };
 
-/* ── Tracking Bar ───────────────────────────────────────── */
-const TrackingBar = ({ step, eta }) => (
-  <View style={t.wrap}>
-    <View style={t.headerRow}>
-      <MaterialIcons name="local-shipping" size={16} color={C.accent} />
-      <Text style={t.eta}>
-        Estimated arrival:{' '}
-        <Text style={{ fontWeight: '800', color: C.accent }}>{eta}</Text>
-      </Text>
-    </View>
-    <View style={t.stepsRow}>
-      {TRACK_STEPS.map((label, i) => {
-        const done    = i < step;
-        const current = i === step - 1;
-        const isLast  = i === TRACK_STEPS.length - 1;
-        return (
-          <React.Fragment key={label}>
-            <View style={t.stepCol}>
-              <View style={[t.dot, done && t.dotDone, current && t.dotCurrent]}>
-                {done
-                  ? <MaterialIcons name="check" size={10} color={C.white} />
-                  : <View style={[t.dotInner, current && t.dotInnerCurrent]} />
-                }
+// ── Tracking Bar ─────────────────────────────────────────────────
+const TrackingBar = ({ status, estimatedDelivery }) => {
+  const currentStep = STATUS_CONFIG[status]?.step ?? 1;
+
+  return (
+    <View style={t.wrap}>
+      {estimatedDelivery && (
+        <View style={t.etaRow}>
+          <MaterialIcons name="access-time" size={14} color={C.accent} />
+          <Text style={t.etaText}>
+            Estimated delivery:{' '}
+            <Text style={{ fontWeight: '800', color: C.accent }}>{estimatedDelivery}</Text>
+          </Text>
+        </View>
+      )}
+
+      <View style={t.stepsRow}>
+        {TRACK_STEPS.map((step, i) => {
+          const stepNum = i + 1;
+          const done    = currentStep > stepNum;
+          const current = currentStep === stepNum;
+          const isLast  = i === TRACK_STEPS.length - 1;
+
+          return (
+            <React.Fragment key={step.key}>
+              <View style={t.stepCol}>
+                <View style={[
+                  t.dot,
+                  done    && t.dotDone,
+                  current && t.dotCurrent,
+                ]}>
+                  {done
+                    ? <MaterialIcons name="check" size={10} color={C.white} />
+                    : <MaterialIcons
+                        name={step.icon}
+                        size={10}
+                        color={current ? C.white : C.textLight}
+                      />
+                  }
+                </View>
+                <Text style={[t.stepLbl, (done || current) && t.stepLblActive]}>
+                  {step.label}
+                </Text>
               </View>
-              <Text style={[t.stepLbl, done && t.stepLblDone]}>{label}</Text>
-            </View>
-            {!isLast && <View style={[t.line, i < step - 1 && t.lineDone]} />}
-          </React.Fragment>
-        );
-      })}
+              {!isLast && (
+                <View style={[t.line, done && t.lineDone]} />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </View>
     </View>
-  </View>
-);
+  );
+};
 
 const t = StyleSheet.create({
   wrap: {
-    backgroundColor: C.white,
-    borderRadius:    14,
-    padding:         14,
+    backgroundColor: C.bg,
+    borderRadius:    12,
+    padding:         12,
     marginBottom:    10,
     borderWidth:     1,
     borderColor:     C.border,
+    gap:             12,
   },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
-  eta:       { fontSize: 12, color: C.textMid },
+  etaRow: {
+    flexDirection:  'row',
+    alignItems:     'center',
+    gap:            6,
+    backgroundColor: C.accentBg,
+    borderRadius:   8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  etaText:   { fontSize: 12, color: '#BF360C', flex: 1 },
   stepsRow:  { flexDirection: 'row', alignItems: 'flex-start' },
   stepCol:   { alignItems: 'center', gap: 5, flex: 0 },
   dot: {
-    width:           20,
-    height:          20,
-    borderRadius:    10,
+    width:           24,
+    height:          24,
+    borderRadius:    12,
     backgroundColor: C.border,
     alignItems:      'center',
     justifyContent:  'center',
   },
-  dotDone:         { backgroundColor: C.green },
-  dotCurrent:      { backgroundColor: C.greenLight },
-  dotInner:        { width: 8, height: 8, borderRadius: 4, backgroundColor: C.textLight },
-  dotInnerCurrent: { backgroundColor: C.white },
-  stepLbl:         { fontSize: 8, color: C.textLight, fontWeight: '500', textAlign: 'center', maxWidth: 42 },
-  stepLblDone:     { color: C.green, fontWeight: '700' },
-  line:            { flex: 1, height: 2, backgroundColor: C.border, marginTop: 9, marginHorizontal: 2 },
-  lineDone:        { backgroundColor: C.green },
+  dotDone:    { backgroundColor: C.green },
+  dotCurrent: { backgroundColor: C.greenLight },
+  stepLbl:    {
+    fontSize:   8,
+    color:      C.textLight,
+    fontWeight: '500',
+    textAlign:  'center',
+    maxWidth:   48,
+  },
+  stepLblActive: { color: C.green, fontWeight: '700' },
+  line:          { flex: 1, height: 2, backgroundColor: C.border, marginTop: 11, marginHorizontal: 2 },
+  lineDone:      { backgroundColor: C.green },
 });
 
-/* ── Empty State ────────────────────────────────────────── */
+// ── Empty State ──────────────────────────────────────────────────
 const EmptyState = ({ tabKey }) => {
   const { icon, title, sub } = EMPTY_STATES[tabKey];
   return (
@@ -147,8 +215,8 @@ const EmptyState = ({ tabKey }) => {
 };
 
 const e = StyleSheet.create({
-  wrap:     { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  iconBox:  {
+  wrap:    { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, marginTop: 60 },
+  iconBox: {
     width:           88,
     height:          88,
     borderRadius:    24,
@@ -164,84 +232,126 @@ const e = StyleSheet.create({
   sub:      { fontSize: 13, color: C.textLight, textAlign: 'center', lineHeight: 20 },
 });
 
-/* ── Order Card ─────────────────────────────────────────── */
+// ── Order Card ───────────────────────────────────────────────────
 const OrderCard = ({ order }) => {
-  const statusStyle  = STATUS_STYLES[order.statusType] ?? STATUS_STYLES.delivered;
-  const showTracking = order.statusType === 'transit' && order.step > 0;
+  const cfg        = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.pending;
+  const isActive   = ['pending', 'confirmed', 'in_transit'].includes(order.status);
+  const isCancelled = order.status === 'cancelled';
+
+  const formattedDate = new Date(order.created_at).toLocaleDateString('en-PH', {
+    year:  'numeric',
+    month: 'short',
+    day:   'numeric',
+    hour:  '2-digit',
+    minute:'2-digit',
+  });
 
   return (
     <View style={oc.card}>
-      {/* Top row */}
+
+      {/* Top row — order ID + status */}
       <View style={oc.topRow}>
         <View>
-          <Text style={oc.orderId}>{order.id}</Text>
-          <Text style={oc.orderDate}>{order.date}</Text>
+          <Text style={oc.orderId}>Order #{String(order.id).padStart(5, '0')}</Text>
+          <Text style={oc.orderDate}>{formattedDate}</Text>
         </View>
-        <View style={[oc.statusPill, { backgroundColor: statusStyle.bg }]}>
-          <Text style={[oc.statusText, { color: statusStyle.text }]}>{order.status}</Text>
+        <View style={[oc.statusPill, { backgroundColor: cfg.bg }]}>
+          <MaterialIcons name={cfg.icon} size={12} color={cfg.color} />
+          <Text style={[oc.statusText, { color: cfg.color }]}>{cfg.label}</Text>
         </View>
       </View>
 
-      {showTracking && <TrackingBar step={order.step} eta={order.eta} />}
-
-      {order.cancelReason && (
-        <View style={oc.cancelBanner}>
-          <MaterialIcons name="info-outline" size={14} color={C.error} />
-          <Text style={oc.cancelText}>Reason: {order.cancelReason}</Text>
-        </View>
+      {/* Tracking bar — only for active orders */}
+      {isActive && (
+        <TrackingBar
+          status={order.status}
+          estimatedDelivery={order.estimated_delivery}
+        />
       )}
 
-      {/* Items */}
-      <View style={oc.itemsRow}>
+      {/* COD badge */}
+      <View style={oc.codRow}>
+        <MaterialIcons name="payments" size={13} color={C.accent} />
+        <Text style={oc.codText}>Cash on Delivery</Text>
+      </View>
+
+      {/* Delivery address */}
+      <View style={oc.addressRow}>
+        <MaterialIcons name="location-on" size={13} color={C.textLight} />
+        <Text style={oc.addressText} numberOfLines={1}>{order.delivery_address}</Text>
+      </View>
+
+      {/* Items list */}
+      <View style={oc.itemsWrap}>
         {order.items.map((item, i) => (
-          <View key={i} style={oc.itemChip}>
-            <View style={oc.itemEmoji}>
-              <Text style={{ fontSize: 22 }}>{item.emoji}</Text>
-            </View>
-            <View>
-              <Text style={oc.itemName}>{item.name}</Text>
-              <Text style={oc.itemUnit}>{item.unit} × {item.qty}</Text>
-            </View>
+          <View key={i} style={oc.itemRow}>
+            <View style={oc.itemDot} />
+            <Text style={oc.itemName} numberOfLines={1}>{item.product_name}</Text>
+            <Text style={oc.itemQty}>×{item.quantity}</Text>
+            <Text style={oc.itemPrice}>₱{parseFloat(item.subtotal).toFixed(2)}</Text>
           </View>
         ))}
       </View>
 
+      {/* Notes */}
+      {!!order.notes && (
+        <View style={oc.noteRow}>
+          <MaterialIcons name="sticky-note-2" size={13} color={C.textLight} />
+          <Text style={oc.noteText}>{order.notes}</Text>
+        </View>
+      )}
+
       <View style={oc.divider} />
 
-      {/* Footer */}
+      {/* Footer — total + actions */}
       <View style={oc.footer}>
         <View>
-          <Text style={oc.totalLabel}>Order total</Text>
-          <Text style={oc.totalVal}>₱{order.total}</Text>
+          <Text style={oc.totalLabel}>Total (COD)</Text>
+          <Text style={oc.totalVal}>₱{parseFloat(order.total_amount).toFixed(2)}</Text>
         </View>
         <View style={oc.btnRow}>
-          <TouchableOpacity
-            style={oc.btnOutline}
-            onPress={() => Alert.alert('Receipt', `Order ${order.id}\nTotal: ₱${order.total}\n\nReceipt would open here.`)}
-            activeOpacity={0.7}
-          >
-            <Text style={oc.btnOutlineText}>Receipt</Text>
-          </TouchableOpacity>
-
-          {order.statusType === 'transit' && (
+          {/* Cancelled orders can be reordered */}
+          {isCancelled && (
             <TouchableOpacity
               style={oc.btnFill}
-              onPress={() => Alert.alert('Live Tracking', 'Opening live map tracker...')}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons name="my-location" size={14} color={C.white} />
-              <Text style={oc.btnFillText}>Track</Text>
-            </TouchableOpacity>
-          )}
-
-          {(order.statusType === 'delivered' || order.statusType === 'cancelled') && (
-            <TouchableOpacity
-              style={oc.btnFill}
-              onPress={() => Alert.alert('Reorder', 'All items have been added to your cart!')}
+              onPress={() => Alert.alert('Reorder', 'Items will be added to your cart.')}
               activeOpacity={0.8}
             >
               <MaterialIcons name="replay" size={14} color={C.white} />
               <Text style={oc.btnFillText}>Reorder</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Delivered orders can be reordered */}
+          {order.status === 'delivered' && (
+            <TouchableOpacity
+              style={oc.btnFill}
+              onPress={() => Alert.alert('Reorder', 'Items will be added to your cart.')}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="replay" size={14} color={C.white} />
+              <Text style={oc.btnFillText}>Reorder</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Pending orders can be cancelled by user */}
+          {order.status === 'pending' && (
+            <TouchableOpacity
+              style={oc.btnOutline}
+              onPress={() =>
+                Alert.alert(
+                  'Cancel Order',
+                  'Are you sure you want to cancel this order?',
+                  [
+                    { text: 'No',  style: 'cancel' },
+                    { text: 'Yes, Cancel', style: 'destructive',
+                      onPress: () => order.onCancel?.(order.id) },
+                  ]
+                )
+              }
+              activeOpacity={0.7}
+            >
+              <Text style={oc.btnOutlineText}>Cancel Order</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -258,46 +368,85 @@ const oc = StyleSheet.create({
     marginBottom:    12,
     borderWidth:     1,
     borderColor:     C.border,
+    shadowColor:     '#1B5E20',
+    shadowOffset:    { width: 0, height: 2 },
+    shadowOpacity:   0.06,
+    shadowRadius:    8,
+    elevation:       3,
   },
   topRow: {
     flexDirection:  'row',
     justifyContent: 'space-between',
     alignItems:     'flex-start',
-    marginBottom:   12,
+    marginBottom:   10,
   },
-  orderId:    { fontSize: 13, fontWeight: '700', color: C.textDark },
-  orderDate:  { fontSize: 11, color: C.textLight, marginTop: 2 },
-  statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  orderId:   { fontSize: 14, fontWeight: '800', color: C.textDark },
+  orderDate: { fontSize: 11, color: C.textLight, marginTop: 2 },
+  statusPill: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    gap:               5,
+    paddingHorizontal: 10,
+    paddingVertical:   5,
+    borderRadius:      20,
+  },
   statusText: { fontSize: 11, fontWeight: '700' },
 
-  cancelBanner: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    gap:             6,
-    backgroundColor: C.errorBg,
-    borderRadius:    8,
-    padding:         8,
-    marginBottom:    10,
+  codRow: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    gap:               5,
+    marginBottom:      6,
   },
-  cancelText: { fontSize: 12, color: C.error, fontWeight: '500' },
+  codText: { fontSize: 11, color: C.accent, fontWeight: '600' },
 
-  itemsRow: { flexDirection: 'column', gap: 8, marginBottom: 12 },
-  itemChip: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  itemEmoji: {
-    width:           42,
-    height:          42,
-    borderRadius:    10,
-    backgroundColor: '#F2F2F2',
-    alignItems:      'center',
-    justifyContent:  'center',
+  addressRow: {
+    flexDirection:  'row',
+    alignItems:     'center',
+    gap:            5,
+    marginBottom:   10,
   },
-  itemName: { fontSize: 13, fontWeight: '600', color: C.textDark },
-  itemUnit: { fontSize: 11, color: C.textLight },
+  addressText: { fontSize: 11, color: C.textLight, flex: 1 },
+
+  itemsWrap: {
+    backgroundColor: C.bg,
+    borderRadius:    10,
+    padding:         10,
+    gap:             6,
+    marginBottom:    8,
+    borderWidth:     1,
+    borderColor:     C.border,
+  },
+  itemRow: {
+    flexDirection:  'row',
+    alignItems:     'center',
+    gap:            8,
+  },
+  itemDot: {
+    width:           5,
+    height:          5,
+    borderRadius:    3,
+    backgroundColor: C.green,
+  },
+  itemName:  { flex: 1, fontSize: 12, color: C.textDark, fontWeight: '500' },
+  itemQty:   { fontSize: 12, color: C.textLight, fontWeight: '500' },
+  itemPrice: { fontSize: 12, color: C.green, fontWeight: '700' },
+
+  noteRow: {
+    flexDirection:     'row',
+    alignItems:        'flex-start',
+    gap:               6,
+    backgroundColor:   '#FFFBF0',
+    borderRadius:      8,
+    padding:           8,
+    marginBottom:      8,
+  },
+  noteText: { fontSize: 11, color: C.textMid, flex: 1, lineHeight: 16 },
 
   divider: { height: 1, backgroundColor: C.border, marginBottom: 12 },
 
   footer:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  totalLabel: { fontSize: 11, color: C.textLight },
+  totalLabel: { fontSize: 11, color: C.textLight, fontWeight: '500' },
   totalVal:   { fontSize: 18, fontWeight: '800', color: C.textDark },
   btnRow:     { flexDirection: 'row', gap: 8 },
 
@@ -306,10 +455,10 @@ const oc = StyleSheet.create({
     paddingVertical:   8,
     borderRadius:      9,
     borderWidth:       1.5,
-    borderColor:       C.border,
-    backgroundColor:   C.white,
+    borderColor:       C.error,
+    backgroundColor:   C.errorBg,
   },
-  btnOutlineText: { fontSize: 12, fontWeight: '600', color: C.textMid },
+  btnOutlineText: { fontSize: 12, fontWeight: '600', color: C.error },
 
   btnFill: {
     flexDirection:     'row',
@@ -324,10 +473,100 @@ const oc = StyleSheet.create({
   btnFillText: { fontSize: 12, fontWeight: '700', color: C.white },
 });
 
-/* ── Main Screen ────────────────────────────────────────── */
-const OrdersScreen = () => {
-  const [activeTab, setActiveTab] = useState('active');
-  const currentOrders = ORDERS[activeTab] ?? [];
+// ── Main Screen ──────────────────────────────────────────────────
+const OrdersScreen = ({ user }) => {
+  const [activeTab,  setActiveTab]  = useState('active');
+  const [orders,     setOrders]     = useState({ active: [], past: [], cancelled: [] });
+  const [loading,    setLoading]    = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // ── Fetch orders from Neon DB ──────────────────────────────────
+  const fetchOrders = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      // Fetch all orders for this user
+      const rows = await sql`
+        SELECT
+          o.id,
+          o.status,
+          o.total_amount,
+          o.delivery_address,
+          o.notes,
+          o.estimated_delivery,
+          o.created_at,
+          o.confirmed_at,
+          o.delivered_at
+        FROM orders o
+        WHERE o.user_id = ${user.id}
+        ORDER BY o.created_at DESC
+      `;
+
+      // Fetch order items for all orders
+      const orderIds = rows.map(r => r.id);
+      let itemRows = [];
+      if (orderIds.length > 0) {
+        itemRows = await sql`
+          SELECT
+            order_id,
+            product_name,
+            unit_price,
+            quantity,
+            subtotal
+          FROM order_items
+          WHERE order_id = ANY(${orderIds})
+        `;
+      }
+
+      // Attach items to each order
+      const ordersWithItems = rows.map(order => ({
+        ...order,
+        items: itemRows.filter(item => item.order_id === order.id),
+      }));
+
+      // Split into tabs
+      const active    = ordersWithItems.filter(o =>
+        ['pending', 'confirmed', 'in_transit'].includes(o.status)
+      );
+      const past      = ordersWithItems.filter(o => o.status === 'delivered');
+      const cancelled = ordersWithItems.filter(o => o.status === 'cancelled');
+
+      setOrders({ active, past, cancelled });
+    } catch (err) {
+      console.error('Fetch orders error:', err);
+      Alert.alert('Error', 'Could not load your orders. Pull down to refresh.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => { fetchOrders(); }, [fetchOrders]);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchOrders();
+  };
+
+  // ── Cancel order (only pending) ────────────────────────────────
+  const handleCancel = async (orderId) => {
+    try {
+      await sql`
+        UPDATE orders
+        SET status = 'cancelled'
+        WHERE id = ${orderId} AND status = 'pending'
+      `;
+      fetchOrders();
+    } catch (err) {
+      Alert.alert('Error', 'Could not cancel the order. Please try again.');
+    }
+  };
+
+  const currentOrders = (orders[activeTab] ?? []).map(o => ({
+    ...o,
+    onCancel: handleCancel,
+  }));
+
+  const activeBadge = orders.active.length;
 
   return (
     <SafeAreaView style={s.root} edges={['top']}>
@@ -337,7 +576,14 @@ const OrdersScreen = () => {
       <View style={s.header}>
         <Text style={s.headerTitle}>My Orders</Text>
 
-        {/* Tabs */}
+        {/* Refresh button */}
+        <TouchableOpacity onPress={handleRefresh} style={s.refreshBtn} activeOpacity={0.7}>
+          <MaterialIcons name="refresh" size={20} color={C.green} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Tabs */}
+      <View style={s.tabsWrap}>
         <View style={s.tabsRow}>
           {TABS.map(tab => (
             <TouchableOpacity
@@ -349,9 +595,9 @@ const OrdersScreen = () => {
               <Text style={[s.tabLabel, activeTab === tab.key && s.tabLabelActive]}>
                 {tab.label}
               </Text>
-              {tab.key === 'active' && ORDERS.active.length > 0 && (
+              {tab.key === 'active' && activeBadge > 0 && (
                 <View style={s.tabBadge}>
-                  <Text style={s.tabBadgeText}>{ORDERS.active.length}</Text>
+                  <Text style={s.tabBadgeText}>{activeBadge}</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -359,18 +605,33 @@ const OrdersScreen = () => {
         </View>
       </View>
 
-      {currentOrders.length === 0 ? (
-        <EmptyState tabKey={activeTab} />
+      {/* Content */}
+      {loading ? (
+        <View style={s.loadingWrap}>
+          <ActivityIndicator size="large" color={C.green} />
+          <Text style={s.loadingText}>Loading your orders…</Text>
+        </View>
+      ) : currentOrders.length === 0 ? (
+        <ScrollView
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={C.green} />
+          }
+        >
+          <EmptyState tabKey={activeTab} />
+        </ScrollView>
       ) : (
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={s.body}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={C.green} />
+          }
         >
           {currentOrders.map(order => (
             <OrderCard key={order.id} order={order} />
           ))}
-          <View style={{ height: 16 }} />
+          <View style={{ height: 100 }} />
         </ScrollView>
       )}
     </SafeAreaView>
@@ -379,35 +640,53 @@ const OrdersScreen = () => {
 
 export default OrdersScreen;
 
+// ── Styles ───────────────────────────────────────────────────────
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
 
   header: {
+    flexDirection:     'row',
+    justifyContent:    'space-between',
+    alignItems:        'center',
     backgroundColor:   C.white,
     paddingHorizontal: 18,
     paddingTop:        16,
+    paddingBottom:     14,
     borderBottomWidth: 1,
     borderBottomColor: C.border,
   },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: C.textDark, marginBottom: 14 },
+  headerTitle: { fontSize: 20, fontWeight: '800', color: C.textDark },
+  refreshBtn: {
+    width:           36,
+    height:          36,
+    borderRadius:    18,
+    backgroundColor: C.greenFaded,
+    alignItems:      'center',
+    justifyContent:  'center',
+  },
 
+  tabsWrap: {
+    backgroundColor:   C.white,
+    paddingHorizontal: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
   tabsRow: { flexDirection: 'row' },
   tab: {
     flexDirection:     'row',
     alignItems:        'center',
     gap:               6,
     paddingBottom:     12,
-    paddingRight:      18,
+    paddingRight:      20,
     borderBottomWidth: 2.5,
     borderBottomColor: 'transparent',
   },
   tabActive:      { borderBottomColor: C.green },
   tabLabel:       { fontSize: 13, fontWeight: '600', color: C.textLight },
   tabLabelActive: { color: C.green },
-
   tabBadge: {
-    minWidth:          18,
-    height:            18,
+    minWidth:          17,
+    height:            17,
     borderRadius:      9,
     backgroundColor:   C.green,
     alignItems:        'center',
@@ -415,6 +694,14 @@ const s = StyleSheet.create({
     paddingHorizontal: 4,
   },
   tabBadgeText: { fontSize: 9, fontWeight: '800', color: C.white },
+
+  loadingWrap: {
+    flex:           1,
+    alignItems:     'center',
+    justifyContent: 'center',
+    gap:            12,
+  },
+  loadingText: { fontSize: 13, color: C.textLight, fontWeight: '500' },
 
   body: { padding: 14 },
 });

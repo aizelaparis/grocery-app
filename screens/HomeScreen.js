@@ -262,9 +262,13 @@ const [modalVisible,     setModalVisible]     = useState(false);
                     </View>
 
                     {/* Add button */}
-                    <TouchableOpacity style={hs.addBtn} onPress={onAddToCart} activeOpacity={0.85}>
-                      <MaterialIcons name="add" size={20} color={C.white} />
-                    </TouchableOpacity>
+<TouchableOpacity
+  style={hs.addBtn}
+  onPress={() => onAddToCart(item, 1)}
+  activeOpacity={0.85}
+>
+  <MaterialIcons name="add" size={20} color={C.white} />
+</TouchableOpacity>
 
                  </TouchableOpacity>
                   
@@ -288,14 +292,52 @@ const [modalVisible,     setModalVisible]     = useState(false);
 const HomeScreen = ({ route, navigation }) => {
   const [activeTab, setActiveTab] = useState('Home');
   const [cartCount, setCartCount] = useState(0);
+  const [cartItems, setCartItems] = useState([]);
   const [user,      setUser]      = useState(route?.params?.user ?? null);
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'Home':     return <HomeTabContent onAddToCart={() => setCartCount(v => v + 1)} />;
+      case 'Home': return (
+  <HomeTabContent
+    onAddToCart={(product, qty) => {
+      setCartCount(v => v + 1);
+      setCartItems(prev => {
+        const existing = prev.find(i => i.product_id === product.id);
+        if (existing) {
+          return prev.map(i =>
+            i.product_id === product.id ? { ...i, qty: i.qty + qty } : i
+          );
+        }
+        return [...prev, {
+  id:         String(product.id),
+  product_id: product.id,
+  name:       product.name,
+  emoji:      '🛒',
+  image_url:  product.image_url ?? null,
+  price:      parseFloat(product.unit_price),
+  unit:       product.unit,
+  qty:        qty,
+}];
+      });
+    }}
+  />
+);
       case 'Category': return <CategoryScreen navigation={navigation} />;
-      case 'Cart':     return <CartScreen />;
-      case 'Orders':   return <OrdersScreen />;
+     case 'Cart': return (
+  <CartScreen
+    user={user}
+    cartItems={cartItems}
+    onCartUpdate={(updated) => {
+      setCartItems(updated);
+      setCartCount(updated.reduce((sum, i) => sum + i.qty, 0));
+    }}
+    onOrderPlaced={() => {
+      setCartCount(0);
+      setCartItems([]);
+    }}
+  />
+);
+      case 'Orders': return <OrdersScreen user={user} />;
       case 'Profile':  return (
         <ProfileScreen
           user={user}
