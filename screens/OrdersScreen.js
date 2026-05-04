@@ -14,6 +14,32 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { sql } from '../api/db';
 
+// ── Live countdown hook ──────────────────────────────────────────
+const useCountdown = (deadline) => {
+  const [remaining, setRemaining] = useState('');
+
+  useEffect(() => {
+    if (!deadline) return;
+
+    const tick = () => {
+      const diff = new Date(deadline) - new Date();
+      if (diff <= 0) {
+        setRemaining('Arriving now! 🛵');
+        return;
+      }
+      const m = Math.floor(diff / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setRemaining(`${m}m ${s}s remaining`);
+    };
+
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [deadline]);
+
+  return remaining;
+};
+
 const C = {
   green:      '#2E7D32',
   greenLight: '#4CAF50',
@@ -102,12 +128,20 @@ const EMPTY_STATES = {
 };
 
 // ── Tracking Bar ─────────────────────────────────────────────────
-const TrackingBar = ({ status, estimatedDelivery }) => {
+const TrackingBar = ({ status, estimatedDelivery, deliveryDeadline }) => {
   const currentStep = STATUS_CONFIG[status]?.step ?? 1;
+  const countdown   = useCountdown(deliveryDeadline);
 
   return (
     <View style={t.wrap}>
-      {estimatedDelivery && (
+      {deliveryDeadline ? (
+        <View style={t.etaRow}>
+          <MaterialIcons name="timer" size={14} color={C.accent} />
+          <Text style={t.etaText}>
+            <Text style={{ fontWeight: '800', color: C.accent }}>{countdown}</Text>
+          </Text>
+        </View>
+      ) : estimatedDelivery ? (
         <View style={t.etaRow}>
           <MaterialIcons name="access-time" size={14} color={C.accent} />
           <Text style={t.etaText}>
@@ -115,7 +149,7 @@ const TrackingBar = ({ status, estimatedDelivery }) => {
             <Text style={{ fontWeight: '800', color: C.accent }}>{estimatedDelivery}</Text>
           </Text>
         </View>
-      )}
+      ) : null}
 
       <View style={t.stepsRow}>
         {TRACK_STEPS.map((step, i) => {
@@ -266,6 +300,7 @@ const OrderCard = ({ order }) => {
         <TrackingBar
           status={order.status}
           estimatedDelivery={order.estimated_delivery}
+          deliveryDeadline={order.delivery_deadline}
         />
       )}
 
@@ -493,6 +528,7 @@ const OrdersScreen = ({ user }) => {
           o.delivery_address,
           o.notes,
           o.estimated_delivery,
+          o.delivery_deadline,
           o.created_at,
           o.confirmed_at,
           o.delivered_at
