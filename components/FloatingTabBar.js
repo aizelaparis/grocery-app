@@ -59,7 +59,7 @@ export default FloatingTabBar;
 const s = StyleSheet.create({
   wrapper: {
     position:         'absolute',
-    bottom:           56,
+    bottom:           10,
     left:             18,
     right:            18,
     zIndex:           999,
