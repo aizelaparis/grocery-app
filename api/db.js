@@ -1,5 +1,6 @@
 import { neon } from '@neondatabase/serverless';
+import Constants from 'expo-constants';
 
-const DATABASE_URL = 'postgresql://neondb_owner:npg_owWUMHOI13uv@ep-spring-mode-aovktkme-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
+const DATABASE_URL = Constants.expoConfig?.extra?.databaseUrl ?? '';
 
 export const sql = neon(DATABASE_URL);
