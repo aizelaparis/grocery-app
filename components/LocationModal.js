@@ -14,7 +14,7 @@ import {
   Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { sql } from '../api/db';
+import { supabase } from '../api/db';
 
 const C = {
   green:      '#2E7D32',
@@ -58,22 +58,24 @@ const LocationModal = ({ visible, currentValue = '', onClose, onSave }) => {
   const searchRef = useRef();
 
   // ── Fetch locations from DB ──────────────────────────────
-  const fetchLocations = async () => {
-    setLoadingLocs(true);
-    try {
-      const rows = await sql`
-        SELECT id, label, area
-        FROM locations
-        WHERE status = 'active'
-        ORDER BY area ASC, label ASC
-      `;
-      setLocations(rows);
-    } catch (err) {
-      setError('Could not load locations. You can type your address manually.');
-    } finally {
-      setLoadingLocs(false);
-    }
-  };
+const fetchLocations = async () => {
+  setLoadingLocs(true);
+  try {
+    const { data, error } = await supabase
+      .from('locations')
+      .select('id, label, area')
+      .eq('status', 'active')
+      .order('area', { ascending: true })
+      .order('label', { ascending: true });
+
+    if (error) throw error;
+    setLocations(data ?? []);
+  } catch (err) {
+    setError('Could not load locations. You can type your address manually.');
+  } finally {
+    setLoadingLocs(false);
+  }
+};
 
   // ── Slide animation on visibility change ────────────────
   useEffect(() => {

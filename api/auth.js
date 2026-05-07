@@ -1,42 +1,63 @@
-import { sql } from './db';
-import { saveSession } from './session';
+import { supabase } from './db';
+import { saveSession, clearSession } from './session';
 
 export const registerUser = async ({ firstName, lastName, email, password }) => {
-  const existing = await sql`
-    SELECT id FROM users WHERE email = ${email}
-  `;
+  // 1. Create auth account — trigger auto-creates the public.users profile
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        first_name: firstName,
+        last_name:  lastName,
+      },
+    },
+  });
 
-  if (existing.length > 0) {
-    throw new Error('Email is already registered.');
-  }
+  if (error) throw new Error(error.message);
 
-  const result = await sql`
-    INSERT INTO users (first_name, last_name, email, password)
-    VALUES (${firstName}, ${lastName}, ${email}, ${password})
-    RETURNING id, first_name, last_name, email, created_at
-  `;
+  // 2. Sign in immediately to establish session
+  const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
 
- const { password: _, ...safeUser } = result[0];
+  if (signInError) throw new Error(signInError.message);
+
+  const safeUser = {
+    id:         signInData.user.id,
+    first_name: firstName,
+    last_name:  lastName,
+    email,
+    created_at: signInData.user.created_at,
+  };
+
   await saveSession(safeUser);
   return safeUser;
 };
 
 export const loginUser = async ({ email, password }) => {
-  const result = await sql`
-    SELECT * FROM users WHERE email = ${email}
-  `;
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
 
-  if (result.length === 0) {
-    throw new Error('No account found with that email.');
-  }
+  if (error) throw new Error('Incorrect email or password.');
 
-  const user = result[0];
+  // Fetch full profile from public.users table
+  const { data: profile, error: profileError } = await supabase
+    .from('users')
+    .select('id, first_name, last_name, email, address, created_at')
+    .eq('id', data.user.id)
+    .single();
 
-  if (user.password !== password) {
-    throw new Error('Incorrect password.');
-  }
+  if (profileError) throw new Error(profileError.message);
 
- const { password: _, ...safeUser } = user;
-  await saveSession(safeUser);
-  return safeUser;
+  await saveSession(profile);
+  return profile;
+};
+
+export const logoutUser = async () => {
+  await supabase.auth.signOut();
+  await clearSession();
 };

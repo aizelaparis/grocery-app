@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { sql } from '../api/db';
+import { supabase } from '../api/db';
 import { getCategoryMeta } from '../constants/categoryIcons';
 
 const { width } = Dimensions.get('window');
@@ -74,39 +74,44 @@ const CategoryScreen = ({ navigation }) => {
   const [loading,    setLoading]    = useState(true);
 
   useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        // Join with products so we can count items per category
-        const rows = await sql`
-          SELECT
-            c.id,
-            c.name,
-            COUNT(p.id) AS item_count
-          FROM categories c
-          LEFT JOIN products p ON p.category = c.name AND p.stock > 0
-          WHERE c.status = 'active'
-          GROUP BY c.id, c.name
-          ORDER BY c.name ASC
-        `;
+   const fetchCategories = async () => {
+  try {
+    const [{ data: cats, error: cErr }, { data: products, error: pErr }] = await Promise.all([
+      supabase
+        .from('categories')
+        .select('id, name')
+        .eq('status', 'active')
+        .order('name', { ascending: true }),
+      supabase
+        .from('products')
+        .select('category')
+        .gt('stock', 0),
+    ]);
 
-        const mapped = rows.map(row => {
-          const meta = getCategoryMeta(row.name);
-          return {
-            id:    String(row.id),
-            name:  row.name,
-            emoji: meta.emoji,
-            bg:    meta.bg,
-            count: `${row.item_count} item${row.item_count !== 1 ? 's' : ''}`,
-          };
-        });
+    if (cErr) throw cErr;
+    if (pErr) throw pErr;
 
-        setCategories(mapped);
-      } catch (err) {
-        console.error('Failed to load categories:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
+    const mapped = (cats ?? []).map(row => {
+      const count = (products ?? []).filter(
+        p => p.category?.toLowerCase() === row.name?.toLowerCase()
+      ).length;
+      const meta = getCategoryMeta(row.name);
+      return {
+        id:    String(row.id),
+        name:  row.name,
+        emoji: meta.emoji,
+        bg:    meta.bg,
+        count: `${count} item${count !== 1 ? 's' : ''}`,
+      };
+    });
+
+    setCategories(mapped);
+  } catch (err) {
+    console.error('Failed to load categories:', err.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
     fetchCategories();
   }, []);

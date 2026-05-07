@@ -15,7 +15,7 @@ import {
   Modal,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { sql } from '../api/db';
+import { supabase } from '../api/db';
 import { clearSession } from '../api/session';
 import LocationModal from '../components/LocationModal';
 
@@ -84,100 +84,99 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
     setIsDirty(true);
   };
 
-  const handleUpdate = async () => {
-    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
-      Alert.alert('Validation', 'All fields are required.');
-      return;
-    }
-    if (!email.includes('@')) {
-      Alert.alert('Validation', 'Enter a valid email address.');
-      return;
-    }
-    setSaving(true);
-    dismissEditing();
-    try {
-      await sql`
-        UPDATE users
-        SET first_name = ${firstName.trim()},
-            last_name  = ${lastName.trim()},
-            email      = ${email.trim()},
-            address    = ${address.trim() || null}
-        WHERE id = ${user.id}
-      `;
-      setIsDirty(false);
-      if (onUserUpdate) {
-        onUserUpdate({
-          ...user,
-          first_name: firstName.trim(),
-          last_name:  lastName.trim(),
-          email:      email.trim(),
-          address:    address.trim() || null,
-        });
-      }
-      Alert.alert('Success', 'Profile updated successfully!');
-    } catch (err) {
-      Alert.alert('Error', err.message || 'Failed to update profile.');
-    } finally {
-      setSaving(false);
-    }
-  };
+const handleUpdate = async () => {
+  if (!firstName.trim() || !lastName.trim() || !email.trim()) {
+    Alert.alert('Validation', 'All fields are required.');
+    return;
+  }
+  if (!email.includes('@')) {
+    Alert.alert('Validation', 'Enter a valid email address.');
+    return;
+  }
+  setSaving(true);
+  dismissEditing();
+  try {
+    const { error } = await supabase
+      .from('users')
+      .update({
+        first_name: firstName.trim(),
+        last_name:  lastName.trim(),
+        email:      email.trim(),
+      })
+      .eq('id', user.id);
 
-  const handleLogout = () => {
-    Alert.alert(
-      'Log Out',
-      'Are you sure you want to log out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Log Out',
-          style: 'destructive',
-          onPress: async () => {
-            await clearSession();
-            onLogout();
-          },
-        },
-      ]
-    );
-  };
+    if (error) throw error;
+    setIsDirty(false);
+    onUserUpdate?.({
+      ...user,
+      first_name: firstName.trim(),
+      last_name:  lastName.trim(),
+      email:      email.trim(),
+    });
+    Alert.alert('Success', 'Profile updated successfully!');
+  } catch (err) {
+    Alert.alert('Error', err.message || 'Failed to update profile.');
+  } finally {
+    setSaving(false);
+  }
+};
 
-  const handleChangePhoto = () => {
-    Alert.alert('Change Photo', 'This feature is coming soon!');
-  };
-
-  const handleChangePassword = async () => {
-    if (!newPassword || newPassword.length < 8) {
-      Alert.alert('Validation', 'Password must be at least 8 characters.');
-      return;
-    }
-    setPassLoading(true);
-    try {
-      await sql`
-        UPDATE users SET password = ${newPassword} WHERE id = ${user.id}
-      `;
-      setNewPassword('');
-      setShowPassModal(false);
-      Alert.alert('Success', 'Password updated successfully!');
-    } catch (err) {
-      Alert.alert('Error', err.message || 'Failed to update password.');
-    } finally {
-      setPassLoading(false);
-    }
-  };
+const handleChangePassword = async () => {
+  if (!newPassword || newPassword.length < 8) {
+    Alert.alert('Validation', 'Password must be at least 8 characters.');
+    return;
+  }
+  setPassLoading(true);
+  try {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+    setNewPassword('');
+    setShowPassModal(false);
+    Alert.alert('Success', 'Password updated successfully!');
+  } catch (err) {
+    Alert.alert('Error', err.message || 'Failed to update password.');
+  } finally {
+    setPassLoading(false);
+  }
+};
 
 const handleAddressSave = async (newAddress) => {
   setAddress(newAddress);
-  // Save immediately to DB
   try {
-    await sql`
-      UPDATE users SET address = ${newAddress} WHERE id = ${user.id}
-    `;
-    if (onUserUpdate) {
-      onUserUpdate({ ...user, address: newAddress });
-    }
-    Alert.alert('Saved', 'Your delivery address has been updated.');
+    const { error } = await supabase
+      .from('users')
+      .update({ address: newAddress })
+      .eq('id', user.id);
+
+    if (error) throw error;
+    onUserUpdate?.({ ...user, address: newAddress });
+    Alert.alert('Saved', 'Address updated successfully!');
   } catch (err) {
     Alert.alert('Error', err.message || 'Failed to save address.');
   }
+};
+
+const handleChangePhoto = () => {
+  Alert.alert('Change Photo', 'This feature is coming soon!');
+};
+
+const handleLogout = () => {
+  Alert.alert(
+    'Log Out',
+    'Are you sure you want to log out?',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log Out',
+        style: 'destructive',
+        onPress: async () => {
+          await supabase.auth.signOut();
+          await clearSession();
+          onLogout();
+        },
+      },
+    ]
+  );
 };
 
   return (

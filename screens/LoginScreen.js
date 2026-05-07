@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { loginUser } from '../api/auth';
+import { supabase } from '../api/db';
+
 
 const C = {
   green:        '#2E7D32',
@@ -169,13 +171,24 @@ const LoginScreen = ({ navigation }) => {
     }
   };
 
-  const handleForgotPassword = () => {
-    if (!email.trim()) {
-      alertRef.current?.show({ type: 'info', message: 'Enter your email first.' });
-      return;
-    }
-    alertRef.current?.show({ type: 'info', message: `Reset link sent to ${email}` });
-  };
+// REPLACE handleForgotPassword with:
+const handleForgotPassword = async () => {
+  if (!email.trim()) {
+    alertRef.current?.show({ type: 'info', message: 'Enter your email first.' });
+    return;
+  }
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    if (error) throw error;
+    alertRef.current?.show({
+      type: 'success',
+      message: `Password reset link sent to ${email}`,
+    });
+  } catch (err) {
+    alertRef.current?.show({ type: 'error', message: err.message });
+  }
+};
+
 
   return (
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>

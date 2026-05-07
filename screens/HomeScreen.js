@@ -17,7 +17,7 @@ import ProfileScreen    from './ProfileScreen';
 import CategoryScreen   from './CategoryScreen';
 import CartScreen       from './CartScreen';
 import OrdersScreen     from './OrdersScreen';
-import { sql }             from '../api/db';
+import { supabase } from '../api/db';
 import { getCategoryMeta } from '../constants/categoryIcons';
 import ProductModal        from '../components/ProductModal';
 
@@ -77,35 +77,37 @@ const HomeTabContent = ({ onAddToCart }) => {
 const [selectedProduct,  setSelectedProduct]  = useState(null);
 const [modalVisible,     setModalVisible]     = useState(false);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [products, cats] = await Promise.all([
-          sql`
-            SELECT id, name, unit_price, unit, category, stock, threshold, image_url
-            FROM products
-            WHERE stock > 0
-            ORDER BY created_at DESC
-            LIMIT 50
-          `,
-          sql`
-            SELECT id, name
-            FROM categories
-            WHERE status = 'active'
-            ORDER BY name ASC
-            LIMIT 10
-          `,
-        ]);
-        setAllProducts(products);
-        setCategories(cats);
-      } catch (err) {
-        console.error('HomeScreen fetch error:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
+useEffect(() => {
+const fetchData = async () => {
+  try {
+    const [{ data: products, error: pErr }, { data: cats, error: cErr }] = await Promise.all([
+      supabase
+        .from('products')
+        .select('id, name, unit_price, unit, category, stock, threshold, image_url')
+        .gt('stock', 0)
+        .order('created_at', { ascending: false })
+        .limit(50),
+      supabase
+        .from('categories')
+        .select('id, name')
+        .eq('status', 'active')
+        .order('name', { ascending: true })
+        .limit(10),
+    ]);
+
+    if (pErr) throw pErr;
+    if (cErr) throw cErr;
+
+    setAllProducts(products ?? []);
+    setCategories(cats ?? []);
+  } catch (err) {
+    console.error('HomeScreen fetch error:', err.message);
+  } finally {
+    setLoading(false);
+  }
+};
+  fetchData();
+}, []);
 
   const activeCategory = categories.find(c => c.id === activeCategoryId);
 

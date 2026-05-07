@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { sql } from '../api/db';
+import { supabase } from '../api/db';
 
 // ── Live countdown hook ──────────────────────────────────────────
 const useCountdown = (deadline) => {
@@ -516,86 +516,86 @@ const OrdersScreen = ({ user }) => {
   const [refreshing, setRefreshing] = useState(false);
 
   // ── Fetch orders from Neon DB ──────────────────────────────────
-  const fetchOrders = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      // Fetch all orders for this user
-      const rows = await sql`
-        SELECT
-          o.id,
-          o.status,
-          o.total_amount,
-          o.delivery_address,
-          o.notes,
-          o.estimated_delivery,
-          o.delivery_deadline,
-          o.created_at,
-          o.confirmed_at,
-          o.delivered_at
-        FROM orders o
-        WHERE o.user_id = ${user.id}
-        ORDER BY o.created_at DESC
-      `;
+const fetchOrders = useCallback(async () => {
+  if (!user?.id) return;
+  try {
+    const { data: rows, error } = await supabase
+      .from('orders')
+      .select(`
+        id, status, total_amount, delivery_address,
+        notes, estimated_delivery, delivery_deadline,
+        created_at, confirmed_at, delivered_at,
+        order_items (
+          order_id, product_name, unit_price, quantity, subtotal
+        )
+      `)
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
 
-      // Fetch order items for all orders
-      const orderIds = rows.map(r => r.id);
-      let itemRows = [];
-      if (orderIds.length > 0) {
-        itemRows = await sql`
-          SELECT
-            order_id,
-            product_name,
-            unit_price,
-            quantity,
-            subtotal
-          FROM order_items
-          WHERE order_id = ANY(${orderIds})
-        `;
-      }
+    if (error) throw error;
 
-      // Attach items to each order
-      const ordersWithItems = rows.map(order => ({
-        ...order,
-        items: itemRows.filter(item => item.order_id === order.id),
-      }));
+    const ordersWithItems = (rows ?? []).map(order => ({
+      ...order,
+      items: order.order_items ?? [],
+    }));
 
-      // Split into tabs
-      const active    = ordersWithItems.filter(o =>
+    setOrders({
+      active:    ordersWithItems.filter(o =>
         ['pending', 'confirmed', 'in_transit'].includes(o.status)
-      );
-      const past      = ordersWithItems.filter(o => o.status === 'delivered');
-      const cancelled = ordersWithItems.filter(o => o.status === 'cancelled');
+      ),
+      past:      ordersWithItems.filter(o => o.status === 'delivered'),
+      cancelled: ordersWithItems.filter(o => o.status === 'cancelled'),
+    });
+  } catch (err) {
+    console.error('Fetch orders error:', err.message);
+    Alert.alert('Error', 'Could not load your orders. Pull down to refresh.');
+  } finally {
+    setLoading(false);
+    setRefreshing(false);
+  }
+}, [user?.id]);
 
-      setOrders({ active, past, cancelled });
-    } catch (err) {
-      console.error('Fetch orders error:', err);
-      Alert.alert('Error', 'Could not load your orders. Pull down to refresh.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [user?.id]);
+// REPLACE handleCancel with:
+const handleCancel = async (orderId) => {
+  try {
+    const { error } = await supabase
+      .from('orders')
+      .update({ status: 'cancelled' })
+      .eq('id', orderId)
+      .eq('status', 'pending');
 
-  useEffect(() => { fetchOrders(); }, [fetchOrders]);
-
-  const handleRefresh = () => {
-    setRefreshing(true);
+    if (error) throw error;
     fetchOrders();
-  };
+  } catch (err) {
+    Alert.alert('Error', 'Could not cancel the order. Please try again.');
+  }
+};
 
-  // ── Cancel order (only pending) ────────────────────────────────
-  const handleCancel = async (orderId) => {
-    try {
-      await sql`
-        UPDATE orders
-        SET status = 'cancelled'
-        WHERE id = ${orderId} AND status = 'pending'
-      `;
-      fetchOrders();
-    } catch (err) {
-      Alert.alert('Error', 'Could not cancel the order. Please try again.');
-    }
-  };
+useEffect(() => {
+  fetchOrders();
+
+  const channel = supabase
+    .channel('orders-screen')
+    .on(
+      'postgres_changes',
+      {
+        event:  'UPDATE',
+        schema: 'public',
+        table:  'orders',
+        filter: `user_id=eq.${user?.id}`,
+      },
+      () => fetchOrders()
+    )
+    .subscribe();
+
+  return () => supabase.removeChannel(channel);
+}, [fetchOrders]);
+
+const handleRefresh = () => {
+  setRefreshing(true);
+  fetchOrders();
+};
+
 
   const currentOrders = (orders[activeTab] ?? []).map(o => ({
     ...o,
