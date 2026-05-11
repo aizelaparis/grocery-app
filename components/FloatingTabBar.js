@@ -19,7 +19,7 @@ const TABS = [
   { key: 'Profile', icon: 'person',        label: 'Profile' },
 ];
 
-const FloatingTabBar = ({ activeTab, onTabPress, cartCount = 0 }) => {
+const FloatingTabBar = ({ activeTab, onTabPress, cartCount = 0, ordersCount = 0 }) => {
   return (
     <View style={s.wrapper} pointerEvents="box-none">
       <View style={s.bar}>
@@ -40,10 +40,13 @@ const FloatingTabBar = ({ activeTab, onTabPress, cartCount = 0 }) => {
                   color={active ? C.green : C.inactive}
                 />
                 {showBadge && (
-                  <View style={s.badge}>
-                    <Text style={s.badgeText}>{cartCount > 9 ? '9+' : cartCount}</Text>
-                  </View>
-                )}
+  <View style={s.badge}>
+    <Text style={s.badgeText}>{cartCount > 9 ? '9+' : cartCount}</Text>
+  </View>
+)}
+{tab.key === 'Orders' && ordersCount > 0 && (
+  <View style={s.ordersDot} />
+)}
               </View>
               <Text style={[s.label, active && s.labelActive]}>{tab.label}</Text>
             </TouchableOpacity>
@@ -124,5 +127,16 @@ const s = StyleSheet.create({
     fontSize:   8,
     color:      C.white,
     fontWeight: '800',
+  },
+  ordersDot: {
+    position:        'absolute',
+    top:             0,
+    right:           0,
+    width:           8,
+    height:          8,
+    borderRadius:    4,
+    backgroundColor: C.green,
+    borderWidth:     1.5,
+    borderColor:     C.white,
   },
 });

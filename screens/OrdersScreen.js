@@ -201,13 +201,13 @@ const t = StyleSheet.create({
     gap:             12,
   },
   etaRow: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    gap:            6,
-    backgroundColor: C.accentBg,
-    borderRadius:   8,
+    flexDirection:     'row',
+    alignItems:        'center',
+    gap:               6,
+    backgroundColor:   C.accentBg,
+    borderRadius:      8,
     paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingVertical:   7,
   },
   etaText:   { fontSize: 12, color: '#BF360C', flex: 1 },
   stepsRow:  { flexDirection: 'row', alignItems: 'flex-start' },
@@ -273,11 +273,11 @@ const OrderCard = ({ order }) => {
   const isCancelled = order.status === 'cancelled';
 
   const formattedDate = new Date(order.created_at).toLocaleDateString('en-PH', {
-    year:  'numeric',
-    month: 'short',
-    day:   'numeric',
-    hour:  '2-digit',
-    minute:'2-digit',
+    year:   'numeric',
+    month:  'short',
+    day:    'numeric',
+    hour:   '2-digit',
+    minute: '2-digit',
   });
 
   return (
@@ -304,10 +304,10 @@ const OrderCard = ({ order }) => {
         />
       )}
 
-      {/* COD badge */}
+      {/* Pick-up badge */}
       <View style={oc.codRow}>
-        <MaterialIcons name="payments" size={13} color={C.accent} />
-        <Text style={oc.codText}>Cash on Delivery</Text>
+        <MaterialIcons name="store" size={13} color={C.accent} />
+        <Text style={oc.codText}>Pick-up at Pamili Mart</Text>
       </View>
 
       {/* Delivery address */}
@@ -341,7 +341,7 @@ const OrderCard = ({ order }) => {
       {/* Footer — total + actions */}
       <View style={oc.footer}>
         <View>
-          <Text style={oc.totalLabel}>Total (COD)</Text>
+          <Text style={oc.totalLabel}>Total (Pay on Pickup)</Text>
           <Text style={oc.totalVal}>₱{parseFloat(order.total_amount).toFixed(2)}</Text>
         </View>
         <View style={oc.btnRow}>
@@ -428,10 +428,10 @@ const oc = StyleSheet.create({
   statusText: { fontSize: 11, fontWeight: '700' },
 
   codRow: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    gap:               5,
-    marginBottom:      6,
+    flexDirection: 'row',
+    alignItems:    'center',
+    gap:           5,
+    marginBottom:  6,
   },
   codText: { fontSize: 11, color: C.accent, fontWeight: '600' },
 
@@ -509,93 +509,108 @@ const oc = StyleSheet.create({
 });
 
 // ── Main Screen ──────────────────────────────────────────────────
-const OrdersScreen = ({ user }) => {
+/**
+ * Props:
+ *   user                  {object}
+ *   onActiveOrdersChange  {(count: number) => void}  — NEW: reports active order count upward
+ */
+const OrdersScreen = ({ user, onActiveOrdersChange }) => {
   const [activeTab,  setActiveTab]  = useState('active');
   const [orders,     setOrders]     = useState({ active: [], past: [], cancelled: [] });
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // ── Fetch orders from Neon DB ──────────────────────────────────
-const fetchOrders = useCallback(async () => {
-  if (!user?.id) return;
-  try {
-    const { data: rows, error } = await supabase
-      .from('orders')
-      .select(`
-        id, status, total_amount, delivery_address,
-        notes, estimated_delivery, delivery_deadline,
-        created_at, confirmed_at, delivered_at,
-        order_items (
-          order_id, product_name, unit_price, quantity, subtotal
-        )
-      `)
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
+  // ── Fetch orders ───────────────────────────────────────────────
+  const fetchOrders = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const { data: rows, error } = await supabase
+        .from('orders')
+        .select(`
+          id, status, total_amount, delivery_address,
+          notes, estimated_delivery, delivery_deadline,
+          created_at, confirmed_at, delivered_at,
+          order_items (
+            order_id, product_name, unit_price, quantity, subtotal
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
 
-    if (error) throw error;
+      if (error) throw error;
 
-    const ordersWithItems = (rows ?? []).map(order => ({
-      ...order,
-      items: order.order_items ?? [],
-    }));
+      const ordersWithItems = (rows ?? []).map(order => ({
+        ...order,
+        items: order.order_items ?? [],
+      }));
 
-    setOrders({
-      active:    ordersWithItems.filter(o =>
+      const active    = ordersWithItems.filter(o =>
         ['pending', 'confirmed', 'in_transit'].includes(o.status)
-      ),
-      past:      ordersWithItems.filter(o => o.status === 'delivered'),
-      cancelled: ordersWithItems.filter(o => o.status === 'cancelled'),
-    });
-  } catch (err) {
-    console.error('Fetch orders error:', err.message);
-    Alert.alert('Error', 'Could not load your orders. Pull down to refresh.');
-  } finally {
-    setLoading(false);
-    setRefreshing(false);
-  }
-}, [user?.id]);
+      );
+      const past      = ordersWithItems.filter(o => o.status === 'delivered');
+      const cancelled = ordersWithItems.filter(o => o.status === 'cancelled');
 
-// REPLACE handleCancel with:
-const handleCancel = async (orderId) => {
-  try {
-    const { error } = await supabase
-      .from('orders')
-      .update({ status: 'cancelled' })
-      .eq('id', orderId)
-      .eq('status', 'pending');
+      setOrders({ active, past, cancelled });
 
-    if (error) throw error;
+      // ── Notify parent about active order count ──────────────
+      // Show dot if there are active orders (pending/confirmed/in_transit)
+      // OR if there are any past/cancelled orders (so the tab always has a
+      // subtle indicator once the user has ordered at least once).
+      // Change the condition below to suit your preference:
+      //   active.length > 0            → dot only while order is in progress
+      //   active.length + past.length > 0 → dot as long as any order exists
+      onActiveOrdersChange?.(active.length);
+
+    } catch (err) {
+      console.error('Fetch orders error:', err.message);
+      Alert.alert('Error', 'Could not load your orders. Pull down to refresh.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [user?.id, onActiveOrdersChange]);
+
+  // ── Cancel handler ─────────────────────────────────────────────
+  const handleCancel = async (orderId) => {
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: 'cancelled' })
+        .eq('id', orderId)
+        .eq('status', 'pending');
+
+      if (error) throw error;
+      fetchOrders();
+    } catch (err) {
+      Alert.alert('Error', 'Could not cancel the order. Please try again.');
+    }
+  };
+
+  // ── Mount + realtime subscription ──────────────────────────────
+  useEffect(() => {
     fetchOrders();
-  } catch (err) {
-    Alert.alert('Error', 'Could not cancel the order. Please try again.');
-  }
-};
 
-useEffect(() => {
-  fetchOrders();
+    const channel = supabase
+      .channel('orders-screen')
+      .on(
+        'postgres_changes',
+        {
+          event:  'UPDATE',
+          schema: 'public',
+          table:  'orders',
+          filter: `user_id=eq.${user?.id}`,
+        },
+        () => fetchOrders()
+      )
+      .subscribe();
 
-  const channel = supabase
-    .channel('orders-screen')
-    .on(
-      'postgres_changes',
-      {
-        event:  'UPDATE',
-        schema: 'public',
-        table:  'orders',
-        filter: `user_id=eq.${user?.id}`,
-      },
-      () => fetchOrders()
-    )
-    .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [fetchOrders]);
 
-  return () => supabase.removeChannel(channel);
-}, [fetchOrders]);
-
-const handleRefresh = () => {
-  setRefreshing(true);
-  fetchOrders();
-};
-
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchOrders();
+  };
 
   const currentOrders = (orders[activeTab] ?? []).map(o => ({
     ...o,

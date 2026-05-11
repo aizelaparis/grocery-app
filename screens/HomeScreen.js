@@ -122,7 +122,7 @@ const fetchData = async () => {
       search.length === 0 ||
       p.name.toLowerCase().includes(search.toLowerCase())
     )
-    .slice(0, 6);
+
 
   return (
     <ScrollView
@@ -292,7 +292,8 @@ const fetchData = async () => {
 
 // ── Home Screen shell ────────────────────────────────────────────
 const HomeScreen = ({ route, navigation }) => {
-  const [activeTab, setActiveTab] = useState('Home');
+  const [activeTab,        setActiveTab]        = useState('Home');
+  const [activeOrderCount, setActiveOrderCount] = useState(0);
   const [cartCount, setCartCount] = useState(0);
   const [cartItems, setCartItems] = useState([]);
   const [user,      setUser]      = useState(route?.params?.user ?? null);
@@ -339,7 +340,12 @@ const HomeScreen = ({ route, navigation }) => {
     }}
   />
 );
-      case 'Orders': return <OrdersScreen user={user} />;
+      case 'Orders': return (
+        <OrdersScreen
+          user={user}
+          onActiveOrdersChange={setActiveOrderCount}
+        />
+      );
       case 'Profile':  return (
         <ProfileScreen
           user={user}
@@ -355,10 +361,11 @@ const HomeScreen = ({ route, navigation }) => {
     <SafeAreaView style={s.root}>
       <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
       <View style={{ flex: 1 }}>{renderContent()}</View>
-      <FloatingTabBar
+    <FloatingTabBar
         activeTab={activeTab}
         onTabPress={setActiveTab}
         cartCount={cartCount}
+        ordersCount={activeOrderCount}
       />
     </SafeAreaView>
   );

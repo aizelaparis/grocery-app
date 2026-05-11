@@ -9,12 +9,12 @@ console.log('SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY);
 const headers = {
   'Content-Type': 'application/json',
   'apikey': SUPABASE_ANON_KEY,
-  'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+  'Authorization': Bearer ${SUPABASE_ANON_KEY},
 };
 
 export const dbFetch = async (table, params = '') => {
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/${table}?${params}`,
+    ${SUPABASE_URL}/rest/v1/${table}?${params},
     { headers }
   );
   if (!res.ok) throw new Error(await res.text());
