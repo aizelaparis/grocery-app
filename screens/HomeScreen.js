@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
+  View,
+  Text,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
-  View,
+  TextInput,
+  Alert,
   StatusBar,
   ActivityIndicator,
   Image,
@@ -211,7 +212,6 @@ const HomeTabContent = ({ onAddToCart }) => {
           supabase
             .from('products')
             .select('id, name, unit_price, unit, category, stock, threshold, image_url')
-            // ✅ removed .gt('stock', 0) — sold-out products should still appear
             .order('created_at', { ascending: false })
             .limit(50),
           supabase
@@ -374,7 +374,7 @@ const HomeTabContent = ({ onAddToCart }) => {
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
         onAddToCart={(product, qty) => {
-          // ✅ qty === 0 means "preview only" signal from similar items — skip cart
+          // qty === 0 means "preview only" signal from similar items — skip cart
           if (qty > 0) onAddToCart(product, qty);
         }}
       />
@@ -386,40 +386,60 @@ const HomeTabContent = ({ onAddToCart }) => {
 const HomeScreen = ({ route, navigation }) => {
   const [activeTab,        setActiveTab]        = useState('Home');
   const [activeOrderCount, setActiveOrderCount] = useState(0);
-  const [cartCount,        setCartCount]        = useState(0);
   const [cartItems,        setCartItems]        = useState([]);
   const [user,             setUser]             = useState(route?.params?.user ?? null);
+
+  // Badge = number of unique products in cart (not total qty)
+  const cartCount = cartItems.length;
+
+  // ── Shared addToCart with stock enforcement ───────────────────────
+  const handleAddToCart = useCallback((product, qty) => {
+    // Guard: never add 0-qty items
+    if (qty <= 0) return;
+
+    setCartItems(prev => {
+      const existing = prev.find(i => i.product_id === product.id);
+
+      if (existing) {
+        // Clamp to stock limit — never exceed available stock
+        const newQty = existing.qty + qty;
+        const capped = typeof product.stock === 'number'
+          ? Math.min(newQty, product.stock)
+          : newQty;
+
+        // Already at stock limit — do nothing
+        if (capped === existing.qty) return prev;
+
+        return prev.map(i =>
+          i.product_id === product.id
+            ? { ...i, qty: capped, stock: product.stock }
+            : i
+        );
+      }
+
+      // New item — clamp initial qty to stock
+      const initialQty = typeof product.stock === 'number'
+        ? Math.min(qty, product.stock)
+        : qty;
+
+      return [...prev, {
+        id:         String(product.id),
+        product_id: product.id,
+        name:       product.name,
+        emoji:      '🛒',
+        image_url:  product.image_url ?? null,
+        price:      parseFloat(product.unit_price),
+        unit:       product.unit,
+        qty:        initialQty,
+        stock:      product.stock,
+      }];
+    });
+  }, []);
 
   const renderContent = () => {
     switch (activeTab) {
       case 'Home': return (
-        <HomeTabContent
-          onAddToCart={(product, qty) => {
-            // ✅ guard: never add 0-qty items
-            if (qty <= 0) return;
-
-            setCartCount(v => v + qty);
-            setCartItems(prev => {
-              const existing = prev.find(i => i.product_id === product.id);
-              if (existing) {
-                return prev.map(i =>
-                  i.product_id === product.id ? { ...i, qty: i.qty + qty, stock: product.stock } : i
-                );
-              }
-              return [...prev, {
-                id:         String(product.id),
-                product_id: product.id,
-                name:       product.name,
-                emoji:      '🛒',
-                image_url:  product.image_url ?? null,
-                price:      parseFloat(product.unit_price),
-                unit:       product.unit,
-                qty,
-                stock:      product.stock,
-              }];
-            });
-          }}
-        />
+        <HomeTabContent onAddToCart={handleAddToCart} />
       );
       case 'Category': return <CategoryScreen navigation={navigation} />;
       case 'Cart': return (
@@ -428,9 +448,8 @@ const HomeScreen = ({ route, navigation }) => {
           cartItems={cartItems}
           onCartUpdate={(updated) => {
             setCartItems(updated);
-            setCartCount(updated.reduce((sum, i) => sum + i.qty, 0));
           }}
-          onOrderPlaced={() => { setCartCount(0); setCartItems([]); }}
+          onOrderPlaced={() => { setCartItems([]); }}
         />
       );
       case 'Orders': return (
