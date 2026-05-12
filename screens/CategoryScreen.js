@@ -74,44 +74,43 @@ const CategoryScreen = ({ navigation }) => {
   const [loading,    setLoading]    = useState(true);
 
   useEffect(() => {
-   const fetchCategories = async () => {
-  try {
-    const [{ data: cats, error: cErr }, { data: products, error: pErr }] = await Promise.all([
-      supabase
-        .from('categories')
-        .select('id, name')
-        .eq('status', 'active')
-        .order('name', { ascending: true }),
-      supabase
-        .from('products')
-        .select('category')
-        .gt('stock', 0),
-    ]);
+    const fetchCategories = async () => {
+      try {
+        const [{ data: cats, error: cErr }, { data: products, error: pErr }] = await Promise.all([
+          supabase
+            .from('categories')
+            .select('id, name')
+            .eq('status', 'active')
+            .order('name', { ascending: true }),
+          supabase
+            .from('products')
+            .select('category'),
+        ]);
 
-    if (cErr) throw cErr;
-    if (pErr) throw pErr;
+        if (cErr) throw cErr;
+        if (pErr) throw pErr;
 
-    const mapped = (cats ?? []).map(row => {
-      const count = (products ?? []).filter(
-        p => p.category?.toLowerCase() === row.name?.toLowerCase()
-      ).length;
-      const meta = getCategoryMeta(row.name);
-      return {
-        id:    String(row.id),
-        name:  row.name,
-        emoji: meta.emoji,
-        bg:    meta.bg,
-        count: `${count} item${count !== 1 ? 's' : ''}`,
-      };
-    });
+        const mapped = (cats ?? []).map(row => {
+          const count = (products ?? []).filter(
+            p => p.category?.toLowerCase() === row.name?.toLowerCase()
+          ).length;
+          const meta = getCategoryMeta(row.name);
+          return {
+            id:    String(row.id),
+            name:  row.name,
+            emoji: meta.emoji,
+            bg:    meta.bg,
+            count: `${count} item${count !== 1 ? 's' : ''}`,
+          };
+        });
 
-    setCategories(mapped);
-  } catch (err) {
-    console.error('Failed to load categories:', err.message);
-  } finally {
-    setLoading(false);
-  }
-};
+        setCategories(mapped);
+      } catch (err) {
+        console.error('Failed to load categories:', err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
 
     fetchCategories();
   }, []);
@@ -123,9 +122,14 @@ const CategoryScreen = ({ navigation }) => {
   // Top 2 by raw DB order (you can sort by item_count desc if preferred)
   const popular = categories.slice(0, 2);
 
+  // ── Navigate to ProductListScreen with the selected category ──
   const handlePress = (category) => {
-    console.log('Selected:', category.name);
-    // navigation.navigate('ProductList', { category })
+    navigation.navigate('ProductList', {
+      category: {
+        id:   category.id,
+        name: category.name,
+      },
+    });
   };
 
   return (

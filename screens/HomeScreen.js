@@ -12,12 +12,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import FloatingTabBar   from '../components/FloatingTabBar';
-import ProfileScreen    from './ProfileScreen';
-import CategoryScreen   from './CategoryScreen';
-import CartScreen       from './CartScreen';
-import OrdersScreen     from './OrdersScreen';
-import { supabase } from '../api/db';
+import FloatingTabBar      from '../components/FloatingTabBar';
+import ProfileScreen       from './ProfileScreen';
+import CategoryScreen      from './CategoryScreen';
+import CartScreen          from './CartScreen';
+import OrdersScreen        from './OrdersScreen';
+import { supabase }        from '../api/db';
 import { getCategoryMeta } from '../constants/categoryIcons';
 import ProductModal        from '../components/ProductModal';
 
@@ -28,6 +28,7 @@ const C = {
   greenDark:  '#1B5E20',
   white:      '#FFFFFF',
   border:     '#C8E6C9',
+  borderMid:  '#E8EDE8',
   textDark:   '#1A2E1A',
   textMid:    '#4A6045',
   textLight:  '#8A9E88',
@@ -35,20 +36,7 @@ const C = {
   accent:     '#FF6F00',
 };
 
-const TAG_COLORS = {
-  Sale:    { bg: '#FFF3E0', text: '#E65100' },
-  Popular: { bg: '#E8F5E9', text: '#2E7D32' },
-  New:     { bg: '#E3F2FD', text: '#1565C0' },
-};
-
-const getTag = (product, index) => {
-  if (product.stock <= product.threshold) return 'Sale';
-  if (index < 2)                          return 'Popular';
-  if (index === 2)                        return 'New';
-  return null;
-};
-
-// ── Product image — real URL or emoji fallback ───────────────────
+// ── Product image ─────────────────────────────────────────────────
 const ProductImage = ({ imageUrl, category }) => {
   const [hasError, setHasError] = useState(false);
   const emoji = getCategoryMeta(category).emoji;
@@ -57,61 +45,197 @@ const ProductImage = ({ imageUrl, category }) => {
     return (
       <Image
         source={{ uri: imageUrl }}
-        style={hs.productImg}
-        resizeMode="cover"
+        style={pr.img}
+        resizeMode="contain"
         onError={() => setHasError(true)}
       />
     );
   }
-
-  return <Text style={hs.productEmoji}>{emoji}</Text>;
+  return <Text style={pr.emoji}>{emoji}</Text>;
 };
 
-// ── Home tab content ─────────────────────────────────────────────
+// ── Product card ─────────────────────────────────────────────────
+const ProductCard = ({ item, onPress, onAddToCart }) => {
+  const isSoldOut = item.stock === 0;
+
+  return (
+    <TouchableOpacity
+      style={[pr.card, isSoldOut && pr.cardSoldOut]}
+      activeOpacity={isSoldOut ? 1 : 0.93}
+      onPress={() => !isSoldOut && onPress(item)}
+      disabled={isSoldOut}
+    >
+      <View style={pr.imgWrap}>
+        <ProductImage imageUrl={item.image_url} category={item.category} />
+
+        {isSoldOut && (
+          <View style={pr.soldOutOverlay}>
+            <Text style={pr.soldOutText}>Sold Out</Text>
+          </View>
+        )}
+      </View>
+
+      <View style={pr.info}>
+        <Text style={[pr.name, isSoldOut && { color: C.textLight }]} numberOfLines={2}>
+          {item.name}
+        </Text>
+        <Text style={pr.unit}>{item.unit}</Text>
+        <View style={pr.bottom}>
+          <Text style={[pr.price, isSoldOut && { color: C.textLight }]}>
+            ₱{parseFloat(item.unit_price).toFixed(2)}
+          </Text>
+          {!isSoldOut && (
+            <TouchableOpacity
+              style={pr.addBtn}
+              onPress={() => onAddToCart(item, 1)}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="add" size={20} color={C.white} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+const pr = StyleSheet.create({
+  card: {
+    width:           '48%',
+    backgroundColor: C.white,
+    borderRadius:    14,
+    overflow:        'hidden',
+    borderWidth:     1,
+    borderColor:     C.borderMid,
+    shadowColor:     '#000',
+    shadowOffset:    { width: 0, height: 2 },
+    shadowOpacity:   0.06,
+    shadowRadius:    6,
+    elevation:       3,
+    marginBottom:    12,
+  },
+  cardSoldOut: {
+    opacity: 0.6,
+  },
+
+  // Image
+  imgWrap: {
+    backgroundColor: '#F5F7F5',
+    height:          150,
+    alignItems:      'center',
+    justifyContent:  'center',
+    position:        'relative',
+  },
+  img:   { width: '85%', height: '85%' },
+  emoji: { fontSize: 70 },
+
+  // Sold-out overlay
+  soldOutOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems:      'center',
+    justifyContent:  'center',
+  },
+  soldOutText: {
+    fontSize:          12,
+    fontWeight:        '700',
+    color:             '#FFFFFF',
+    letterSpacing:     0.8,
+    textTransform:     'uppercase',
+    backgroundColor:   'rgba(0,0,0,0.5)',
+    paddingHorizontal: 10,
+    paddingVertical:   4,
+    borderRadius:      6,
+    overflow:          'hidden',
+  },
+
+  // Info
+  info: {
+    padding:    10,
+    paddingTop: 9,
+    gap:        3,
+  },
+  name: {
+    fontSize:   13,
+    fontWeight: '600',
+    color:      C.textDark,
+    lineHeight: 18,
+  },
+  unit: {
+    fontSize: 11,
+    color:    C.textLight,
+  },
+
+  // Price + add
+  bottom: {
+    flexDirection:  'row',
+    alignItems:     'center',
+    justifyContent: 'space-between',
+    marginTop:      6,
+  },
+  price: {
+    fontSize:      16,
+    fontWeight:    '800',
+    color:         C.textDark,
+    letterSpacing: -0.3,
+  },
+  addBtn: {
+    width:           32,
+    height:          32,
+    borderRadius:    16,
+    backgroundColor: C.green,
+    alignItems:      'center',
+    justifyContent:  'center',
+    shadowColor:     C.greenDark,
+    shadowOffset:    { width: 0, height: 2 },
+    shadowOpacity:   0.3,
+    shadowRadius:    4,
+    elevation:       4,
+  },
+});
+
+// ── Home tab content ──────────────────────────────────────────────
 const HomeTabContent = ({ onAddToCart }) => {
   const [search,           setSearch]           = useState('');
   const [allProducts,      setAllProducts]      = useState([]);
   const [categories,       setCategories]       = useState([]);
-  const [activeCategoryId, setActiveCategoryId] = useState(null); // null = All
+  const [activeCategoryId, setActiveCategoryId] = useState(null);
   const [loading,          setLoading]          = useState(true);
-const [selectedProduct,  setSelectedProduct]  = useState(null);
-const [modalVisible,     setModalVisible]     = useState(false);
+  const [selectedProduct,  setSelectedProduct]  = useState(null);
+  const [modalVisible,     setModalVisible]     = useState(false);
 
-useEffect(() => {
-const fetchData = async () => {
-  try {
-    const [{ data: products, error: pErr }, { data: cats, error: cErr }] = await Promise.all([
-      supabase
-        .from('products')
-        .select('id, name, unit_price, unit, category, stock, threshold, image_url')
-        .gt('stock', 0)
-        .order('created_at', { ascending: false })
-        .limit(50),
-      supabase
-        .from('categories')
-        .select('id, name')
-        .eq('status', 'active')
-        .order('name', { ascending: true })
-        .limit(10),
-    ]);
-
-    if (pErr) throw pErr;
-    if (cErr) throw cErr;
-
-    setAllProducts(products ?? []);
-    setCategories(cats ?? []);
-  } catch (err) {
-    console.error('HomeScreen fetch error:', err.message);
-  } finally {
-    setLoading(false);
-  }
-};
-  fetchData();
-}, []);
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [{ data: products, error: pErr }, { data: cats, error: cErr }] = await Promise.all([
+          supabase
+            .from('products')
+            .select('id, name, unit_price, unit, category, stock, threshold, image_url')
+            // ✅ removed .gt('stock', 0) — sold-out products should still appear
+            .order('created_at', { ascending: false })
+            .limit(50),
+          supabase
+            .from('categories')
+            .select('id, name')
+            .eq('status', 'active')
+            .order('name', { ascending: true })
+            .limit(10),
+        ]);
+        if (pErr) throw pErr;
+        if (cErr) throw cErr;
+        setAllProducts(products ?? []);
+        setCategories(cats ?? []);
+      } catch (err) {
+        console.error('HomeScreen fetch error:', err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   const activeCategory = categories.find(c => c.id === activeCategoryId);
 
-  // Filter by selected category + search, then cap at 6
   const filteredProducts = allProducts
     .filter(p =>
       activeCategoryId
@@ -121,8 +245,7 @@ const fetchData = async () => {
     .filter(p =>
       search.length === 0 ||
       p.name.toLowerCase().includes(search.toLowerCase())
-    )
-
+    );
 
   return (
     <ScrollView
@@ -177,7 +300,7 @@ const fetchData = async () => {
         </View>
       ) : (
         <>
-          {/* ── Categories ── */}
+          {/* Categories */}
           <View style={hs.sectionHeader}>
             <Text style={hs.sectionTitle}>Categories</Text>
             <TouchableOpacity><Text style={hs.seeAll}>See all</Text></TouchableOpacity>
@@ -188,7 +311,6 @@ const fetchData = async () => {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={hs.catRow}
           >
-            {/* "All" pill */}
             <TouchableOpacity
               style={[hs.catCard, { backgroundColor: activeCategoryId === null ? C.green : C.greenFaded }]}
               activeOpacity={0.8}
@@ -219,7 +341,7 @@ const fetchData = async () => {
             })}
           </ScrollView>
 
-          {/* ── Featured / Filtered Items ── */}
+          {/* Products */}
           <View style={hs.sectionHeader}>
             <Text style={hs.sectionTitle}>
               {activeCategory ? activeCategory.name : 'Featured Items'}
@@ -233,120 +355,88 @@ const fetchData = async () => {
               <Text style={hs.emptyText}>No products in this category yet.</Text>
             </View>
           ) : (
-            <View style={hs.featuredGrid}>
-              {filteredProducts.map((item, index) => {
-                const tag = getTag(item, index);
-                return (
-                  <TouchableOpacity
-  key={String(item.id)}
-  style={hs.productCard}
-  activeOpacity={0.92}
-  onPress={() => { setSelectedProduct(item); setModalVisible(true); }}
->
-
-                    {/* Image area */}
-                    <View style={hs.imageArea}>
-                      <ProductImage imageUrl={item.image_url} category={item.category} />
-                    </View>
-
-                    {/* Tag badge */}
-                    {tag && (
-                      <View style={[hs.tagBadge, { backgroundColor: TAG_COLORS[tag]?.bg }]}>
-                        <Text style={[hs.tagText, { color: TAG_COLORS[tag]?.text }]}>{tag}</Text>
-                      </View>
-                    )}
-
-                    {/* Info */}
-                    <View style={hs.infoArea}>
-                      <Text style={hs.productName} numberOfLines={2}>{item.name}</Text>
-                      <Text style={hs.productPrice}>₱{parseFloat(item.unit_price).toFixed(2)}</Text>
-                      <Text style={hs.productUnit}>{item.unit}</Text>
-                    </View>
-
-                    {/* Add button */}
-<TouchableOpacity
-  style={hs.addBtn}
-  onPress={() => onAddToCart(item, 1)}
-  activeOpacity={0.85}
->
-  <MaterialIcons name="add" size={20} color={C.white} />
-</TouchableOpacity>
-
-                 </TouchableOpacity>
-                  
-                );
-              })}
+            <View style={hs.grid}>
+              {filteredProducts.map((item) => (
+                <ProductCard
+                  key={String(item.id)}
+                  item={item}
+                  onPress={(p) => { setSelectedProduct(p); setModalVisible(true); }}
+                  onAddToCart={onAddToCart}
+                />
+              ))}
             </View>
           )}
         </>
       )}
-   <ProductModal
+
+      <ProductModal
         product={selectedProduct}
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
-        onAddToCart={(product, qty) => onAddToCart(product, qty)}
+        onAddToCart={(product, qty) => {
+          // ✅ qty === 0 means "preview only" signal from similar items — skip cart
+          if (qty > 0) onAddToCart(product, qty);
+        }}
       />
     </ScrollView>
   );
 };
 
-// ── Home Screen shell ────────────────────────────────────────────
+// ── Home Screen shell ─────────────────────────────────────────────
 const HomeScreen = ({ route, navigation }) => {
   const [activeTab,        setActiveTab]        = useState('Home');
   const [activeOrderCount, setActiveOrderCount] = useState(0);
-  const [cartCount, setCartCount] = useState(0);
-  const [cartItems, setCartItems] = useState([]);
-  const [user,      setUser]      = useState(route?.params?.user ?? null);
+  const [cartCount,        setCartCount]        = useState(0);
+  const [cartItems,        setCartItems]        = useState([]);
+  const [user,             setUser]             = useState(route?.params?.user ?? null);
 
   const renderContent = () => {
     switch (activeTab) {
       case 'Home': return (
-  <HomeTabContent
-    onAddToCart={(product, qty) => {
-      setCartCount(v => v + 1);
-      setCartItems(prev => {
-        const existing = prev.find(i => i.product_id === product.id);
-        if (existing) {
-          return prev.map(i =>
-            i.product_id === product.id ? { ...i, qty: i.qty + qty } : i
-          );
-        }
-        return [...prev, {
-  id:         String(product.id),
-  product_id: product.id,
-  name:       product.name,
-  emoji:      '🛒',
-  image_url:  product.image_url ?? null,
-  price:      parseFloat(product.unit_price),
-  unit:       product.unit,
-  qty:        qty,
-}];
-      });
-    }}
-  />
-);
-      case 'Category': return <CategoryScreen navigation={navigation} />;
-     case 'Cart': return (
-  <CartScreen
-    user={user}
-    cartItems={cartItems}
-    onCartUpdate={(updated) => {
-      setCartItems(updated);
-      setCartCount(updated.reduce((sum, i) => sum + i.qty, 0));
-    }}
-    onOrderPlaced={() => {
-      setCartCount(0);
-      setCartItems([]);
-    }}
-  />
-);
-      case 'Orders': return (
-        <OrdersScreen
-          user={user}
-          onActiveOrdersChange={setActiveOrderCount}
+        <HomeTabContent
+          onAddToCart={(product, qty) => {
+            // ✅ guard: never add 0-qty items
+            if (qty <= 0) return;
+
+            setCartCount(v => v + qty);
+            setCartItems(prev => {
+              const existing = prev.find(i => i.product_id === product.id);
+              if (existing) {
+                return prev.map(i =>
+                  i.product_id === product.id ? { ...i, qty: i.qty + qty, stock: product.stock } : i
+                );
+              }
+              return [...prev, {
+                id:         String(product.id),
+                product_id: product.id,
+                name:       product.name,
+                emoji:      '🛒',
+                image_url:  product.image_url ?? null,
+                price:      parseFloat(product.unit_price),
+                unit:       product.unit,
+                qty,
+                stock:      product.stock,
+              }];
+            });
+          }}
         />
       );
-      case 'Profile':  return (
+      case 'Category': return <CategoryScreen navigation={navigation} />;
+      case 'Cart': return (
+        <CartScreen
+          user={user}
+          cartItems={cartItems}
+          onCartUpdate={(updated) => {
+            setCartItems(updated);
+            setCartCount(updated.reduce((sum, i) => sum + i.qty, 0));
+          }}
+          onOrderPlaced={() => { setCartCount(0); setCartItems([]); }}
+        />
+      );
+      case 'Orders': return (
+        <OrdersScreen user={user} onActiveOrdersChange={setActiveOrderCount} />
+      );
+      case 'Profile': return (
         <ProfileScreen
           user={user}
           onUserUpdate={(updated) => setUser(updated)}
@@ -361,7 +451,7 @@ const HomeScreen = ({ route, navigation }) => {
     <SafeAreaView style={s.root}>
       <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
       <View style={{ flex: 1 }}>{renderContent()}</View>
-    <FloatingTabBar
+      <FloatingTabBar
         activeTab={activeTab}
         onTabPress={setActiveTab}
         cartCount={cartCount}
@@ -373,7 +463,7 @@ const HomeScreen = ({ route, navigation }) => {
 
 export default HomeScreen;
 
-// ── Styles ───────────────────────────────────────────────────────
+// ── Styles ────────────────────────────────────────────────────────
 const hs = StyleSheet.create({
   topBar: {
     flexDirection:     'row',
@@ -386,15 +476,23 @@ const hs = StyleSheet.create({
   greeting:    { fontSize: 18, fontWeight: '700', color: C.textDark },
   subGreeting: { fontSize: 13, color: C.textLight, marginTop: 2 },
   notifBtn: {
-    width: 40, height: 40, borderRadius: 20,
+    width:           40,
+    height:          40,
+    borderRadius:    20,
     backgroundColor: C.greenFaded,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems:      'center',
+    justifyContent:  'center',
   },
   notifDot: {
-    position: 'absolute', top: 8, right: 8,
-    width: 8, height: 8, borderRadius: 4,
+    position:        'absolute',
+    top:             8,
+    right:           8,
+    width:           8,
+    height:          8,
+    borderRadius:    4,
     backgroundColor: C.accent,
-    borderWidth: 1.5, borderColor: C.white,
+    borderWidth:     1.5,
+    borderColor:     C.white,
   },
   searchBar: {
     flexDirection:     'row',
@@ -462,70 +560,11 @@ const hs = StyleSheet.create({
   catEmoji: { fontSize: 22 },
   catLabel: { fontSize: 10, fontWeight: '600' },
 
-  featuredGrid: {
+  grid: {
     flexDirection:     'row',
     flexWrap:          'wrap',
     paddingHorizontal: 14,
-    gap:               12,
-    marginBottom:      8,
-  },
-  productCard: {
-    width:           '47%',
-    backgroundColor: C.white,
-    borderRadius:    16,
-    overflow:        'visible',
-    shadowColor:     '#000',
-    shadowOffset:    { width: 0, height: 3 },
-    shadowOpacity:   0.08,
-    shadowRadius:    8,
-    elevation:       4,
-  },
-  imageArea: {
-    backgroundColor:      '#F2F2F2',
-    borderTopLeftRadius:  16,
-    borderTopRightRadius: 16,
-    height:               140,
-    alignItems:           'center',
-    justifyContent:       'center',
-    overflow:             'hidden',
-  },
-  productImg:   { width: '100%', height: '100%' },  // real image fills box
-  productEmoji: { fontSize: 66 },                    // fallback emoji
-
-  tagBadge: {
-    position:          'absolute',
-    top:               10,
-    left:              10,
-    borderRadius:      20,
-    paddingHorizontal: 9,
-    paddingVertical:   4,
-  },
-  tagText: { fontSize: 10, fontWeight: '700' },
-
-  infoArea: {
-    paddingHorizontal: 12,
-    paddingTop:        10,
-    paddingBottom:     44,
-  },
-  productName:  { fontSize: 14, fontWeight: '600', color: C.textDark, marginBottom: 5, lineHeight: 19 },
-  productPrice: { fontSize: 16, fontWeight: '800', color: C.green, marginBottom: 2 },
-  productUnit:  { fontSize: 12, color: C.textLight },
-
-  addBtn: {
-    position:        'absolute',
-    bottom:          12,
-    right:           12,
-    width:           38,
-    height:          38,
-    borderRadius:    19,
-    backgroundColor: C.green,
-    alignItems:      'center',
-    justifyContent:  'center',
-    shadowColor:     C.greenDark,
-    shadowOffset:    { width: 0, height: 3 },
-    shadowOpacity:   0.4,
-    shadowRadius:    6,
-    elevation:       6,
+    justifyContent:    'space-between',
   },
 
   emptyWrap:  { alignItems: 'center', paddingVertical: 40, gap: 8 },

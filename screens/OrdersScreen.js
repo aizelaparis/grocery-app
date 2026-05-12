@@ -17,141 +17,170 @@ import { supabase } from '../api/db';
 // ── Live countdown hook ──────────────────────────────────────────
 const useCountdown = (deadline) => {
   const [remaining, setRemaining] = useState('');
-
   useEffect(() => {
     if (!deadline) return;
-
     const tick = () => {
       const diff = new Date(deadline) - new Date();
-      if (diff <= 0) {
-        setRemaining('Arriving now! 🛵');
-        return;
-      }
+      if (diff <= 0) { setRemaining('Arriving now'); return; }
       const m = Math.floor(diff / 60000);
       const s = Math.floor((diff % 60000) / 1000);
-      setRemaining(`${m}m ${s}s remaining`);
+      setRemaining(`${m}m ${s}s`);
     };
-
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [deadline]);
-
   return remaining;
 };
 
+// ── Colors ───────────────────────────────────────────────────────
 const C = {
   green:      '#2E7D32',
   greenLight: '#4CAF50',
-  greenFaded: '#E8F5E9',
-  greenDark:  '#1B5E20',
+  greenFaded: '#F1F8F1',
   white:      '#FFFFFF',
-  border:     '#C8E6C9',
-  textDark:   '#1A2E1A',
-  textMid:    '#4A6045',
-  textLight:  '#8A9E88',
-  bg:         '#F7FAF7',
-  accent:     '#FF6F00',
-  accentBg:   '#FFF3E0',
-  error:      '#D32F2F',
-  errorBg:    '#FFEBEE',
+  border:     '#E8F0E8',
+  textDark:   '#111827',
+  textMid:    '#4B5563',
+  textLight:  '#9CA3AF',
+  bg:         '#F9FBF9',
+  accent:     '#EA580C',
+  accentBg:   '#FFF7ED',
+  error:      '#DC2626',
+  errorBg:    '#FEF2F2',
+  pill:       '#F3F4F6',
 };
 
-// ── Status config ────────────────────────────────────────────────
-const STATUS_CONFIG = {
-  pending: {
-    label:   'Pending',
-    color:   '#F57C00',
-    bg:      '#FFF3E0',
-    icon:    'hourglass-empty',
-    step:    1,
-  },
-  confirmed: {
-    label:   'Confirmed',
-    color:   '#1565C0',
-    bg:      '#E3F2FD',
-    icon:    'check-circle',
-    step:    2,
-  },
+// ── Status config — step labels adapt to fulfillment mode ────────
+// When pickup-only: step 3 becomes "Ready" instead of "On the Way"
+const getStatusConfig = (fulfillmentMode) => ({
+  pending:    { label: 'Pending',    color: '#D97706', bg: '#FFFBEB',    icon: 'schedule',       step: 1 },
+  confirmed:  { label: 'Confirmed',  color: '#1D4ED8', bg: '#EFF6FF',    icon: 'check-circle',   step: 2 },
   in_transit: {
-    label:   'On the Way',
-    color:   C.accent,
-    bg:      C.accentBg,
-    icon:    'local-shipping',
-    step:    3,
+    label: fulfillmentMode === 'pickup' ? 'Ready for Pick-up' : 'On the Way',
+    color: C.accent,
+    bg:    C.accentBg,
+    icon:  fulfillmentMode === 'pickup' ? 'storefront' : 'local-shipping',
+    step:  3,
   },
-  delivered: {
-    label:   'Delivered',
-    color:   C.green,
-    bg:      C.greenFaded,
-    icon:    'done-all',
-    step:    4,
+  delivered:  {
+    label: fulfillmentMode === 'pickup' ? 'Picked Up' : 'Delivered',
+    color: C.green,
+    bg:    C.greenFaded,
+    icon:  fulfillmentMode === 'pickup' ? 'done-all' : 'done-all',
+    step:  4,
   },
-  cancelled: {
-    label:   'Cancelled',
-    color:   C.error,
-    bg:      C.errorBg,
-    icon:    'cancel',
-    step:    0,
-  },
-};
+  cancelled:  { label: 'Cancelled',  color: C.error,   bg: C.errorBg,    icon: 'cancel',         step: 0 },
+});
 
-const TRACK_STEPS = [
-  { key: 'pending',    label: 'Placed',     icon: 'receipt' },
-  { key: 'confirmed',  label: 'Confirmed',  icon: 'check-circle' },
-  { key: 'in_transit', label: 'On the Way', icon: 'local-shipping' },
-  { key: 'delivered',  label: 'Delivered',  icon: 'done-all' },
+// Step labels also adapt to pickup mode
+const getTrackSteps = (fulfillmentMode) => [
+  { key: 'pending',    label: 'Placed',     icon: 'receipt'                                              },
+  { key: 'confirmed',  label: 'Confirmed',  icon: 'check-circle'                                         },
+  { key: 'in_transit', label: fulfillmentMode === 'pickup' ? 'Ready' : 'On the Way',
+    icon: fulfillmentMode === 'pickup' ? 'storefront' : 'local-shipping'                                  },
+  { key: 'delivered',  label: fulfillmentMode === 'pickup' ? 'Picked Up' : 'Delivered', icon: 'done-all' },
 ];
 
 const TABS = [
-  { key: 'active',    label: 'Active'       },
-  { key: 'past',      label: 'Past Orders'  },
-  { key: 'cancelled', label: 'Cancelled'    },
+  { key: 'active',    label: 'Active'    },
+  { key: 'past',      label: 'Past'      },
+  { key: 'cancelled', label: 'Cancelled' },
 ];
 
 const EMPTY_STATES = {
-  active: {
-    icon:  '🛒',
-    title: 'No active orders',
-    sub:   "You don't have any orders in progress right now.",
-  },
-  past: {
-    icon:  '📋',
-    title: 'No past orders yet',
-    sub:   'Your completed orders will appear here.',
-  },
-  cancelled: {
-    icon:  '🚫',
-    title: 'No cancelled orders',
-    sub:   "You haven't cancelled any orders — keep it up!",
-  },
+  active:    { icon: '🛒', title: 'No active orders',    sub: "You don't have any orders in progress." },
+  past:      { icon: '📋', title: 'No past orders yet',  sub: 'Completed orders will appear here.'     },
+  cancelled: { icon: '🚫', title: 'No cancelled orders', sub: "You haven't cancelled any orders."      },
 };
 
-// ── Tracking Bar ─────────────────────────────────────────────────
-const TrackingBar = ({ status, estimatedDelivery, deliveryDeadline }) => {
-  const currentStep = STATUS_CONFIG[status]?.step ?? 1;
-  const countdown   = useCountdown(deliveryDeadline);
+// ── Fulfillment mode banner (shown at top when pickup-only) ──────
+const FulfillmentBanner = ({ mode }) => {
+  if (mode === 'both' || !mode) return null;
+
+  const config = {
+    pickup: {
+      icon:    'storefront',
+      bg:      '#FFFBEB',
+      border:  '#FDE68A',
+      color:   '#92400E',
+      message: 'Pick-up only — collect your order at the store.',
+    },
+    delivery: {
+      icon:    'local-shipping',
+      bg:      C.greenFaded,
+      border:  C.border,
+      color:   C.green,
+      message: 'Delivery only — your order will be delivered to your address.',
+    },
+  };
+
+  const cfg = config[mode];
+  if (!cfg) return null;
 
   return (
-    <View style={t.wrap}>
-      {deliveryDeadline ? (
-        <View style={t.etaRow}>
-          <MaterialIcons name="timer" size={14} color={C.accent} />
-          <Text style={t.etaText}>
-            <Text style={{ fontWeight: '800', color: C.accent }}>{countdown}</Text>
-          </Text>
-        </View>
-      ) : estimatedDelivery ? (
-        <View style={t.etaRow}>
-          <MaterialIcons name="access-time" size={14} color={C.accent} />
-          <Text style={t.etaText}>
-            Estimated delivery:{' '}
-            <Text style={{ fontWeight: '800', color: C.accent }}>{estimatedDelivery}</Text>
-          </Text>
-        </View>
-      ) : null}
+    <View style={[fb.wrap, { backgroundColor: cfg.bg, borderColor: cfg.border }]}>
+      <MaterialIcons name={cfg.icon} size={14} color={cfg.color} />
+      <Text style={[fb.text, { color: cfg.color }]}>{cfg.message}</Text>
+    </View>
+  );
+};
 
-      <View style={t.stepsRow}>
+const fb = StyleSheet.create({
+  wrap: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    gap:               8,
+    marginHorizontal:  14,
+    marginTop:         12,
+    marginBottom:      4,
+    paddingHorizontal: 12,
+    paddingVertical:   8,
+    borderRadius:      10,
+    borderWidth:       1,
+  },
+  text: { fontSize: 12, fontWeight: '600', flex: 1 },
+});
+
+// ── Compact Tracking Bar ─────────────────────────────────────────
+const TrackingBar = ({ status, estimatedDelivery, deliveryDeadline, fulfillmentMode }) => {
+  const STATUS_CONFIG = getStatusConfig(fulfillmentMode);
+  const TRACK_STEPS   = getTrackSteps(fulfillmentMode);
+
+  const currentStep = STATUS_CONFIG[status]?.step ?? 1;
+  const countdown   = useCountdown(deliveryDeadline);
+  const isArriving  = countdown === 'Arriving now';
+
+  // ETA label adapts: pickup shows "Ready in X" instead of "X away"
+  const etaLabel = (() => {
+    if (!deliveryDeadline && !estimatedDelivery) return null;
+    if (deliveryDeadline) {
+      if (isArriving) return fulfillmentMode === 'pickup' ? 'Ready now!' : 'Arriving now!';
+      return fulfillmentMode === 'pickup' ? `Ready in ${countdown}` : `${countdown} away`;
+    }
+    return `Est. ${estimatedDelivery}`;
+  })();
+
+  return (
+    <View style={tr.wrap}>
+      {/* ETA pill */}
+      {etaLabel && (
+        <View style={[tr.etaPill, isArriving && tr.etaPillGreen]}>
+          <MaterialIcons
+            name={isArriving
+              ? (fulfillmentMode === 'pickup' ? 'storefront' : 'place')
+              : 'timer'}
+            size={12}
+            color={isArriving ? C.green : C.accent}
+          />
+          <Text style={[tr.etaText, isArriving && tr.etaTextGreen]}>
+            {etaLabel}
+          </Text>
+        </View>
+      )}
+
+      {/* Step dots */}
+      <View style={tr.stepsRow}>
         {TRACK_STEPS.map((step, i) => {
           const stepNum = i + 1;
           const done    = currentStep > stepNum;
@@ -160,28 +189,18 @@ const TrackingBar = ({ status, estimatedDelivery, deliveryDeadline }) => {
 
           return (
             <React.Fragment key={step.key}>
-              <View style={t.stepCol}>
-                <View style={[
-                  t.dot,
-                  done    && t.dotDone,
-                  current && t.dotCurrent,
-                ]}>
+              <View style={tr.stepCol}>
+                <View style={[tr.dot, done && tr.dotDone, current && tr.dotCurrent]}>
                   {done
-                    ? <MaterialIcons name="check" size={10} color={C.white} />
-                    : <MaterialIcons
-                        name={step.icon}
-                        size={10}
-                        color={current ? C.white : C.textLight}
-                      />
+                    ? <MaterialIcons name="check" size={9} color={C.white} />
+                    : <MaterialIcons name={step.icon} size={9} color={current ? C.white : '#D1D5DB'} />
                   }
                 </View>
-                <Text style={[t.stepLbl, (done || current) && t.stepLblActive]}>
+                <Text style={[tr.lbl, (done || current) && tr.lblActive]}>
                   {step.label}
                 </Text>
               </View>
-              {!isLast && (
-                <View style={[t.line, done && t.lineDone]} />
-              )}
+              {!isLast && <View style={[tr.line, done && tr.lineDone]} />}
             </React.Fragment>
           );
         })}
@@ -190,203 +209,173 @@ const TrackingBar = ({ status, estimatedDelivery, deliveryDeadline }) => {
   );
 };
 
-const t = StyleSheet.create({
+const tr = StyleSheet.create({
   wrap: {
-    backgroundColor: C.bg,
-    borderRadius:    12,
-    padding:         12,
-    marginBottom:    10,
-    borderWidth:     1,
-    borderColor:     C.border,
-    gap:             12,
+    borderRadius:      10,
+    paddingVertical:   10,
+    paddingHorizontal: 12,
+    backgroundColor:   C.greenFaded,
+    borderWidth:       1,
+    borderColor:       C.border,
+    gap:               10,
+    marginBottom:      12,
   },
-  etaRow: {
+  etaPill: {
     flexDirection:     'row',
     alignItems:        'center',
-    gap:               6,
+    gap:               5,
+    alignSelf:         'flex-start',
     backgroundColor:   C.accentBg,
-    borderRadius:      8,
+    borderRadius:      20,
     paddingHorizontal: 10,
-    paddingVertical:   7,
+    paddingVertical:   5,
   },
-  etaText:   { fontSize: 12, color: '#BF360C', flex: 1 },
-  stepsRow:  { flexDirection: 'row', alignItems: 'flex-start' },
-  stepCol:   { alignItems: 'center', gap: 5, flex: 0 },
+  etaPillGreen:  { backgroundColor: '#DCFCE7' },
+  etaText:       { fontSize: 11, fontWeight: '700', color: C.accent },
+  etaTextGreen:  { color: C.green },
+  stepsRow:      { flexDirection: 'row', alignItems: 'flex-start' },
+  stepCol:       { alignItems: 'center', gap: 4, flex: 0 },
   dot: {
-    width:           24,
-    height:          24,
-    borderRadius:    12,
-    backgroundColor: C.border,
+    width:           22,
+    height:          22,
+    borderRadius:    11,
+    backgroundColor: '#E5E7EB',
     alignItems:      'center',
     justifyContent:  'center',
   },
   dotDone:    { backgroundColor: C.green },
   dotCurrent: { backgroundColor: C.greenLight },
-  stepLbl:    {
-    fontSize:   8,
-    color:      C.textLight,
-    fontWeight: '500',
-    textAlign:  'center',
-    maxWidth:   48,
-  },
-  stepLblActive: { color: C.green, fontWeight: '700' },
-  line:          { flex: 1, height: 2, backgroundColor: C.border, marginTop: 11, marginHorizontal: 2 },
-  lineDone:      { backgroundColor: C.green },
+  lbl:        { fontSize: 8, color: C.textLight, fontWeight: '500', textAlign: 'center', maxWidth: 46 },
+  lblActive:  { color: C.green, fontWeight: '700' },
+  line:       { flex: 1, height: 2, backgroundColor: '#E5E7EB', marginTop: 10, marginHorizontal: 3 },
+  lineDone:   { backgroundColor: C.green },
 });
 
 // ── Empty State ──────────────────────────────────────────────────
 const EmptyState = ({ tabKey }) => {
   const { icon, title, sub } = EMPTY_STATES[tabKey];
   return (
-    <View style={e.wrap}>
-      <View style={e.iconBox}>
-        <Text style={e.iconText}>{icon}</Text>
-      </View>
-      <Text style={e.title}>{title}</Text>
-      <Text style={e.sub}>{sub}</Text>
+    <View style={em.wrap}>
+      <Text style={em.icon}>{icon}</Text>
+      <Text style={em.title}>{title}</Text>
+      <Text style={em.sub}>{sub}</Text>
     </View>
   );
 };
 
-const e = StyleSheet.create({
-  wrap:    { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, marginTop: 60 },
-  iconBox: {
-    width:           88,
-    height:          88,
-    borderRadius:    24,
-    backgroundColor: C.greenFaded,
-    borderWidth:     1,
-    borderColor:     C.border,
-    alignItems:      'center',
-    justifyContent:  'center',
-    marginBottom:    20,
-  },
-  iconText: { fontSize: 40 },
-  title:    { fontSize: 18, fontWeight: '800', color: C.textDark, marginBottom: 8, textAlign: 'center' },
-  sub:      { fontSize: 13, color: C.textLight, textAlign: 'center', lineHeight: 20 },
+const em = StyleSheet.create({
+  wrap:  { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 72, paddingHorizontal: 40 },
+  icon:  { fontSize: 44, marginBottom: 16 },
+  title: { fontSize: 16, fontWeight: '800', color: C.textDark, marginBottom: 6, textAlign: 'center' },
+  sub:   { fontSize: 13, color: C.textLight, textAlign: 'center', lineHeight: 19 },
 });
 
 // ── Order Card ───────────────────────────────────────────────────
-const OrderCard = ({ order }) => {
-  const cfg        = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.pending;
-  const isActive   = ['pending', 'confirmed', 'in_transit'].includes(order.status);
-  const isCancelled = order.status === 'cancelled';
+const OrderCard = ({ order, fulfillmentMode }) => {
+  const STATUS_CONFIG = getStatusConfig(fulfillmentMode);
+  const cfg           = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.pending;
+  const isActive      = ['pending', 'confirmed', 'in_transit'].includes(order.status);
+  const isCancelled   = order.status === 'cancelled';
+  const isDelivered   = order.status === 'delivered';
+
+  // "Pay on Pickup" label adapts to mode
+  const paymentLabel = fulfillmentMode === 'delivery'
+    ? 'Total · Pay on Delivery'
+    : 'Total · Pay on Pick-up';
 
   const formattedDate = new Date(order.created_at).toLocaleDateString('en-PH', {
-    year:   'numeric',
-    month:  'short',
-    day:    'numeric',
-    hour:   '2-digit',
-    minute: '2-digit',
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   });
+
+  const visibleItems = order.items.slice(0, 2);
+  const hiddenCount  = order.items.length - 2;
 
   return (
     <View style={oc.card}>
 
-      {/* Top row — order ID + status */}
-      <View style={oc.topRow}>
+      {/* ── Header: Order ID + Status ── */}
+      <View style={oc.header}>
         <View>
           <Text style={oc.orderId}>Order #{String(order.id).padStart(5, '0')}</Text>
-          <Text style={oc.orderDate}>{formattedDate}</Text>
+          <Text style={oc.date}>{formattedDate}</Text>
         </View>
         <View style={[oc.statusPill, { backgroundColor: cfg.bg }]}>
-          <MaterialIcons name={cfg.icon} size={12} color={cfg.color} />
+          <MaterialIcons name={cfg.icon} size={11} color={cfg.color} />
           <Text style={[oc.statusText, { color: cfg.color }]}>{cfg.label}</Text>
         </View>
       </View>
 
-      {/* Tracking bar — only for active orders */}
+      {/* ── Tracking bar (active only) ── */}
       {isActive && (
         <TrackingBar
           status={order.status}
           estimatedDelivery={order.estimated_delivery}
           deliveryDeadline={order.delivery_deadline}
+          fulfillmentMode={fulfillmentMode}
         />
       )}
 
-      {/* Pick-up badge */}
-      <View style={oc.codRow}>
-        <MaterialIcons name="store" size={13} color={C.accent} />
-        <Text style={oc.codText}>Pick-up at Pamili Mart</Text>
-      </View>
-
-      {/* Delivery address */}
-      <View style={oc.addressRow}>
-        <MaterialIcons name="location-on" size={13} color={C.textLight} />
-        <Text style={oc.addressText} numberOfLines={1}>{order.delivery_address}</Text>
-      </View>
-
-      {/* Items list */}
-      <View style={oc.itemsWrap}>
-        {order.items.map((item, i) => (
+      {/* ── Items ── */}
+      <View style={oc.itemsBox}>
+        {visibleItems.map((item, i) => (
           <View key={i} style={oc.itemRow}>
-            <View style={oc.itemDot} />
+            <View style={oc.itemBullet} />
             <Text style={oc.itemName} numberOfLines={1}>{item.product_name}</Text>
-            <Text style={oc.itemQty}>×{item.quantity}</Text>
+            <Text style={oc.itemMeta}>×{item.quantity}</Text>
             <Text style={oc.itemPrice}>₱{parseFloat(item.subtotal).toFixed(2)}</Text>
           </View>
         ))}
+        {hiddenCount > 0 && (
+          <Text style={oc.moreItems}>+{hiddenCount} more item{hiddenCount > 1 ? 's' : ''}</Text>
+        )}
       </View>
 
-      {/* Notes */}
-      {!!order.notes && (
-        <View style={oc.noteRow}>
-          <MaterialIcons name="sticky-note-2" size={13} color={C.textLight} />
-          <Text style={oc.noteText}>{order.notes}</Text>
+      {/* ── Delivery address (only shown when delivery is active) ── */}
+      {order.delivery_address && (fulfillmentMode === 'delivery' || fulfillmentMode === 'both') && (
+        <View style={oc.addressRow}>
+          <MaterialIcons name="place" size={12} color={C.textLight} />
+          <Text style={oc.addressText} numberOfLines={2}>{order.delivery_address}</Text>
         </View>
       )}
 
-      <View style={oc.divider} />
+      {/* ── Notes ── */}
+      {!!order.notes && (
+        <View style={oc.noteRow}>
+          <MaterialIcons name="sticky-note-2" size={12} color={C.textLight} />
+          <Text style={oc.noteText} numberOfLines={2}>{order.notes}</Text>
+        </View>
+      )}
 
-      {/* Footer — total + actions */}
+      {/* ── Footer: Total + Action ── */}
       <View style={oc.footer}>
         <View>
-          <Text style={oc.totalLabel}>Total (Pay on Pickup)</Text>
+          <Text style={oc.totalLabel}>{paymentLabel}</Text>
           <Text style={oc.totalVal}>₱{parseFloat(order.total_amount).toFixed(2)}</Text>
         </View>
-        <View style={oc.btnRow}>
-          {/* Cancelled orders can be reordered */}
-          {isCancelled && (
+
+        <View style={oc.actions}>
+          {(isCancelled || isDelivered) && (
             <TouchableOpacity
-              style={oc.btnFill}
+              style={oc.btnPrimary}
               onPress={() => Alert.alert('Reorder', 'Items will be added to your cart.')}
               activeOpacity={0.8}
             >
-              <MaterialIcons name="replay" size={14} color={C.white} />
-              <Text style={oc.btnFillText}>Reorder</Text>
+              <MaterialIcons name="replay" size={13} color={C.white} />
+              <Text style={oc.btnPrimaryText}>Reorder</Text>
             </TouchableOpacity>
           )}
-
-          {/* Delivered orders can be reordered */}
-          {order.status === 'delivered' && (
-            <TouchableOpacity
-              style={oc.btnFill}
-              onPress={() => Alert.alert('Reorder', 'Items will be added to your cart.')}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons name="replay" size={14} color={C.white} />
-              <Text style={oc.btnFillText}>Reorder</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Pending orders can be cancelled by user */}
           {order.status === 'pending' && (
             <TouchableOpacity
-              style={oc.btnOutline}
+              style={oc.btnDanger}
               onPress={() =>
-                Alert.alert(
-                  'Cancel Order',
-                  'Are you sure you want to cancel this order?',
-                  [
-                    { text: 'No',  style: 'cancel' },
-                    { text: 'Yes, Cancel', style: 'destructive',
-                      onPress: () => order.onCancel?.(order.id) },
-                  ]
-                )
+                Alert.alert('Cancel Order', 'Cancel this order?', [
+                  { text: 'No', style: 'cancel' },
+                  { text: 'Cancel Order', style: 'destructive', onPress: () => order.onCancel?.(order.id) },
+                ])
               }
               activeOpacity={0.7}
             >
-              <Text style={oc.btnOutlineText}>Cancel Order</Text>
+              <Text style={oc.btnDangerText}>Cancel</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -399,128 +388,236 @@ const oc = StyleSheet.create({
   card: {
     backgroundColor: C.white,
     borderRadius:    16,
-    padding:         14,
-    marginBottom:    12,
+    padding:         16,
+    marginBottom:    10,
     borderWidth:     1,
     borderColor:     C.border,
-    shadowColor:     '#1B5E20',
-    shadowOffset:    { width: 0, height: 2 },
-    shadowOpacity:   0.06,
-    shadowRadius:    8,
-    elevation:       3,
+    shadowColor:     '#000',
+    shadowOffset:    { width: 0, height: 1 },
+    shadowOpacity:   0.04,
+    shadowRadius:    6,
+    elevation:       2,
   },
-  topRow: {
+  header: {
     flexDirection:  'row',
     justifyContent: 'space-between',
     alignItems:     'flex-start',
-    marginBottom:   10,
+    marginBottom:   12,
   },
-  orderId:   { fontSize: 14, fontWeight: '800', color: C.textDark },
-  orderDate: { fontSize: 11, color: C.textLight, marginTop: 2 },
+  orderId:    { fontSize: 14, fontWeight: '800', color: C.textDark, letterSpacing: -0.3 },
+  date:       { fontSize: 11, color: C.textLight, marginTop: 2 },
   statusPill: {
     flexDirection:     'row',
     alignItems:        'center',
-    gap:               5,
-    paddingHorizontal: 10,
+    gap:               4,
+    paddingHorizontal: 9,
     paddingVertical:   5,
     borderRadius:      20,
   },
   statusText: { fontSize: 11, fontWeight: '700' },
-
-  codRow: {
-    flexDirection: 'row',
-    alignItems:    'center',
-    gap:           5,
-    marginBottom:  6,
+  itemsBox: {
+    backgroundColor:   C.bg,
+    borderRadius:      10,
+    paddingVertical:   8,
+    paddingHorizontal: 12,
+    gap:               6,
+    marginBottom:      10,
   },
-  codText: { fontSize: 11, color: C.accent, fontWeight: '600' },
-
+  itemRow:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  itemBullet: { width: 5, height: 5, borderRadius: 3, backgroundColor: C.greenLight, flexShrink: 0 },
+  itemName:   { flex: 1, fontSize: 12, color: C.textDark, fontWeight: '500' },
+  itemMeta:   { fontSize: 11, color: C.textLight },
+  itemPrice:  { fontSize: 12, color: C.green, fontWeight: '700' },
+  moreItems:  { fontSize: 11, color: C.textLight, marginLeft: 13, marginTop: 2 },
   addressRow: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    gap:            5,
-    marginBottom:   10,
+    flexDirection:     'row',
+    alignItems:        'flex-start',
+    gap:               6,
+    paddingHorizontal: 10,
+    paddingVertical:   8,
+    backgroundColor:   '#EFF6FF',
+    borderRadius:      8,
+    marginBottom:      10,
   },
-  addressText: { fontSize: 11, color: C.textLight, flex: 1 },
-
-  itemsWrap: {
-    backgroundColor: C.bg,
-    borderRadius:    10,
-    padding:         10,
-    gap:             6,
-    marginBottom:    8,
-    borderWidth:     1,
-    borderColor:     C.border,
-  },
-  itemRow: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    gap:            8,
-  },
-  itemDot: {
-    width:           5,
-    height:          5,
-    borderRadius:    3,
-    backgroundColor: C.green,
-  },
-  itemName:  { flex: 1, fontSize: 12, color: C.textDark, fontWeight: '500' },
-  itemQty:   { fontSize: 12, color: C.textLight, fontWeight: '500' },
-  itemPrice: { fontSize: 12, color: C.green, fontWeight: '700' },
-
+  addressText: { fontSize: 11, color: '#1D4ED8', flex: 1, lineHeight: 16 },
   noteRow: {
     flexDirection:     'row',
     alignItems:        'flex-start',
     gap:               6,
-    backgroundColor:   '#FFFBF0',
+    paddingHorizontal: 10,
+    paddingVertical:   8,
+    backgroundColor:   '#FEFCE8',
     borderRadius:      8,
-    padding:           8,
-    marginBottom:      8,
+    marginBottom:      10,
   },
   noteText: { fontSize: 11, color: C.textMid, flex: 1, lineHeight: 16 },
-
-  divider: { height: 1, backgroundColor: C.border, marginBottom: 12 },
-
-  footer:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  totalLabel: { fontSize: 11, color: C.textLight, fontWeight: '500' },
-  totalVal:   { fontSize: 18, fontWeight: '800', color: C.textDark },
-  btnRow:     { flexDirection: 'row', gap: 8 },
-
-  btnOutline: {
-    paddingHorizontal: 14,
-    paddingVertical:   8,
-    borderRadius:      9,
-    borderWidth:       1.5,
-    borderColor:       C.error,
-    backgroundColor:   C.errorBg,
+  footer: {
+    flexDirection:  'row',
+    justifyContent: 'space-between',
+    alignItems:     'center',
+    paddingTop:     10,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
   },
-  btnOutlineText: { fontSize: 12, fontWeight: '600', color: C.error },
-
-  btnFill: {
+  totalLabel:     { fontSize: 11, color: C.textLight },
+  totalVal:       { fontSize: 17, fontWeight: '800', color: C.textDark, letterSpacing: -0.5 },
+  actions:        { flexDirection: 'row', gap: 8 },
+  btnPrimary: {
     flexDirection:     'row',
     alignItems:        'center',
     gap:               5,
     paddingHorizontal: 14,
     paddingVertical:   8,
-    borderRadius:      9,
+    borderRadius:      10,
     backgroundColor:   C.green,
-    elevation:         3,
   },
-  btnFillText: { fontSize: 12, fontWeight: '700', color: C.white },
+  btnPrimaryText: { fontSize: 12, fontWeight: '700', color: C.white },
+  btnDanger: {
+    paddingHorizontal: 14,
+    paddingVertical:   8,
+    borderRadius:      10,
+    backgroundColor:   C.errorBg,
+    borderWidth:       1,
+    borderColor:       '#FECACA',
+  },
+  btnDangerText: { fontSize: 12, fontWeight: '600', color: C.error },
+});
+
+// ── Fulfillment Method Selector (used at checkout) ────────────────
+// Import and use this wherever the customer picks how to receive their order.
+// Pass in fulfillmentMode from store_settings so it grays out unavailable options.
+export const FulfillmentMethodPicker = ({ fulfillmentMode, selected, onSelect }) => {
+  const pickupEnabled   = fulfillmentMode === 'pickup'   || fulfillmentMode === 'both';
+  const deliveryEnabled = fulfillmentMode === 'delivery' || fulfillmentMode === 'both';
+
+  return (
+    <View style={fp.row}>
+      {/* Pick-up card */}
+      <TouchableOpacity
+        style={[
+          fp.card,
+          selected === 'pickup'   && fp.cardActive,
+          !pickupEnabled          && fp.cardDisabled,
+        ]}
+        onPress={() => pickupEnabled && onSelect('pickup')}
+        activeOpacity={pickupEnabled ? 0.7 : 1}
+      >
+        <MaterialIcons
+          name="storefront"
+          size={22}
+          color={pickupEnabled ? (selected === 'pickup' ? C.green : C.textMid) : '#D1D5DB'}
+        />
+        <Text style={[fp.label, !pickupEnabled && fp.labelDim]}>Pick-up</Text>
+        <Text style={[fp.sub,   !pickupEnabled && fp.labelDim]}>
+          {pickupEnabled ? 'Collect at store' : 'Unavailable'}
+        </Text>
+        {!pickupEnabled && (
+          <View style={fp.badge}>
+            <Text style={fp.badgeText}>Unavailable</Text>
+          </View>
+        )}
+        {selected === 'pickup' && pickupEnabled && (
+          <View style={fp.checkMark}>
+            <MaterialIcons name="check" size={10} color={C.white} />
+          </View>
+        )}
+      </TouchableOpacity>
+
+      {/* Delivery card */}
+      <TouchableOpacity
+        style={[
+          fp.card,
+          selected === 'delivery'  && fp.cardActive,
+          !deliveryEnabled         && fp.cardDisabled,
+        ]}
+        onPress={() => deliveryEnabled && onSelect('delivery')}
+        activeOpacity={deliveryEnabled ? 0.7 : 1}
+      >
+        <MaterialIcons
+          name="local-shipping"
+          size={22}
+          color={deliveryEnabled ? (selected === 'delivery' ? C.green : C.textMid) : '#D1D5DB'}
+        />
+        <Text style={[fp.label, !deliveryEnabled && fp.labelDim]}>Delivery</Text>
+        <Text style={[fp.sub,   !deliveryEnabled && fp.labelDim]}>
+          {deliveryEnabled ? 'Delivered to you' : 'Unavailable'}
+        </Text>
+        {!deliveryEnabled && (
+          <View style={fp.badge}>
+            <Text style={fp.badgeText}>Unavailable</Text>
+          </View>
+        )}
+        {selected === 'delivery' && deliveryEnabled && (
+          <View style={fp.checkMark}>
+            <MaterialIcons name="check" size={10} color={C.white} />
+          </View>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+const fp = StyleSheet.create({
+  row:          { flexDirection: 'row', gap: 10 },
+  card: {
+    flex:              1,
+    alignItems:        'center',
+    gap:               4,
+    paddingVertical:   14,
+    paddingHorizontal: 10,
+    borderRadius:      12,
+    borderWidth:       1.5,
+    borderColor:       C.border,
+    backgroundColor:   C.white,
+    position:          'relative',
+  },
+  cardActive:   { borderColor: C.green, backgroundColor: C.greenFaded },
+  cardDisabled: { borderColor: '#F3F4F6', backgroundColor: '#FAFAFA' },
+  label:        { fontSize: 13, fontWeight: '700', color: C.textDark, marginTop: 2 },
+  sub:          { fontSize: 10, color: C.textLight, textAlign: 'center' },
+  labelDim:     { color: '#D1D5DB' },
+  badge: {
+    marginTop:         4,
+    backgroundColor:   '#F3F4F6',
+    borderRadius:      20,
+    paddingHorizontal: 8,
+    paddingVertical:   3,
+  },
+  badgeText:  { fontSize: 10, fontWeight: '600', color: '#9CA3AF' },
+  checkMark: {
+    position:        'absolute',
+    top:             8,
+    right:           8,
+    width:           18,
+    height:          18,
+    borderRadius:    9,
+    backgroundColor: C.green,
+    alignItems:      'center',
+    justifyContent:  'center',
+  },
 });
 
 // ── Main Screen ──────────────────────────────────────────────────
-/**
- * Props:
- *   user                  {object}
- *   onActiveOrdersChange  {(count: number) => void}  — NEW: reports active order count upward
- */
 const OrdersScreen = ({ user, onActiveOrdersChange }) => {
-  const [activeTab,  setActiveTab]  = useState('active');
-  const [orders,     setOrders]     = useState({ active: [], past: [], cancelled: [] });
-  const [loading,    setLoading]    = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [activeTab,       setActiveTab]       = useState('active');
+  const [orders,          setOrders]          = useState({ active: [], past: [], cancelled: [] });
+  const [loading,         setLoading]         = useState(true);
+  const [refreshing,      setRefreshing]      = useState(false);
+  // ── Fulfillment mode fetched once here, passed down to all children ──
+  const [fulfillmentMode, setFulfillmentMode] = useState('pickup');
 
-  // ── Fetch orders ───────────────────────────────────────────────
+  // Fetch fulfillment mode from store_settings
+  useEffect(() => {
+    supabase
+      .from('store_settings')
+      .select('value')
+      .eq('key', 'fulfillment_mode')
+      .single()
+      .then(({ data }) => {
+        if (data?.value) setFulfillmentMode(data.value);
+      });
+  }, []);
+
   const fetchOrders = useCallback(async () => {
     if (!user?.id) return;
     try {
@@ -539,28 +636,13 @@ const OrdersScreen = ({ user, onActiveOrdersChange }) => {
 
       if (error) throw error;
 
-      const ordersWithItems = (rows ?? []).map(order => ({
-        ...order,
-        items: order.order_items ?? [],
-      }));
-
-      const active    = ordersWithItems.filter(o =>
-        ['pending', 'confirmed', 'in_transit'].includes(o.status)
-      );
-      const past      = ordersWithItems.filter(o => o.status === 'delivered');
-      const cancelled = ordersWithItems.filter(o => o.status === 'cancelled');
+      const mapped    = (rows ?? []).map(o => ({ ...o, items: o.order_items ?? [] }));
+      const active    = mapped.filter(o => ['pending', 'confirmed', 'in_transit'].includes(o.status));
+      const past      = mapped.filter(o => o.status === 'delivered');
+      const cancelled = mapped.filter(o => o.status === 'cancelled');
 
       setOrders({ active, past, cancelled });
-
-      // ── Notify parent about active order count ──────────────
-      // Show dot if there are active orders (pending/confirmed/in_transit)
-      // OR if there are any past/cancelled orders (so the tab always has a
-      // subtle indicator once the user has ordered at least once).
-      // Change the condition below to suit your preference:
-      //   active.length > 0            → dot only while order is in progress
-      //   active.length + past.length > 0 → dot as long as any order exists
       onActiveOrdersChange?.(active.length);
-
     } catch (err) {
       console.error('Fetch orders error:', err.message);
       Alert.alert('Error', 'Could not load your orders. Pull down to refresh.');
@@ -570,7 +652,6 @@ const OrdersScreen = ({ user, onActiveOrdersChange }) => {
     }
   }, [user?.id, onActiveOrdersChange]);
 
-  // ── Cancel handler ─────────────────────────────────────────────
   const handleCancel = async (orderId) => {
     try {
       const { error } = await supabase
@@ -578,89 +659,68 @@ const OrdersScreen = ({ user, onActiveOrdersChange }) => {
         .update({ status: 'cancelled' })
         .eq('id', orderId)
         .eq('status', 'pending');
-
       if (error) throw error;
       fetchOrders();
-    } catch (err) {
+    } catch {
       Alert.alert('Error', 'Could not cancel the order. Please try again.');
     }
   };
 
-  // ── Mount + realtime subscription ──────────────────────────────
   useEffect(() => {
     fetchOrders();
-
     const channel = supabase
       .channel('orders-screen')
-      .on(
-        'postgres_changes',
-        {
-          event:  'UPDATE',
-          schema: 'public',
-          table:  'orders',
-          filter: `user_id=eq.${user?.id}`,
-        },
-        () => fetchOrders()
-      )
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'orders',
+        filter: `user_id=eq.${user?.id}`,
+      }, () => fetchOrders())
       .subscribe();
-
     return () => supabase.removeChannel(channel);
   }, [fetchOrders]);
 
-  const handleRefresh = () => {
-    setRefreshing(true);
-    fetchOrders();
-  };
+  const handleRefresh = () => { setRefreshing(true); fetchOrders(); };
 
-  const currentOrders = (orders[activeTab] ?? []).map(o => ({
-    ...o,
-    onCancel: handleCancel,
-  }));
-
-  const activeBadge = orders.active.length;
+  const currentOrders = (orders[activeTab] ?? []).map(o => ({ ...o, onCancel: handleCancel }));
+  const activeBadge   = orders.active.length;
 
   return (
     <SafeAreaView style={s.root} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={C.white} />
 
-      {/* Header */}
+      {/* ── Header ── */}
       <View style={s.header}>
         <Text style={s.headerTitle}>My Orders</Text>
-
-        {/* Refresh button */}
         <TouchableOpacity onPress={handleRefresh} style={s.refreshBtn} activeOpacity={0.7}>
-          <MaterialIcons name="refresh" size={20} color={C.green} />
+          <MaterialIcons name="refresh" size={18} color={C.green} />
         </TouchableOpacity>
       </View>
 
-      {/* Tabs */}
-      <View style={s.tabsWrap}>
-        <View style={s.tabsRow}>
-          {TABS.map(tab => (
-            <TouchableOpacity
-              key={tab.key}
-              style={[s.tab, activeTab === tab.key && s.tabActive]}
-              onPress={() => setActiveTab(tab.key)}
-              activeOpacity={0.7}
-            >
-              <Text style={[s.tabLabel, activeTab === tab.key && s.tabLabelActive]}>
-                {tab.label}
-              </Text>
-              {tab.key === 'active' && activeBadge > 0 && (
-                <View style={s.tabBadge}>
-                  <Text style={s.tabBadgeText}>{activeBadge}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
+      {/* ── Tabs ── */}
+      <View style={s.tabsBar}>
+        {TABS.map(tab => (
+          <TouchableOpacity
+            key={tab.key}
+            style={[s.tab, activeTab === tab.key && s.tabActive]}
+            onPress={() => setActiveTab(tab.key)}
+            activeOpacity={0.7}
+          >
+            <Text style={[s.tabLabel, activeTab === tab.key && s.tabLabelActive]}>
+              {tab.label}
+            </Text>
+            {tab.key === 'active' && activeBadge > 0 && (
+              <View style={s.badge}>
+                <Text style={s.badgeText}>{activeBadge}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        ))}
       </View>
 
-      {/* Content */}
+      {/* ── Content ── */}
       {loading ? (
-        <View style={s.loadingWrap}>
+        <View style={s.loader}>
           <ActivityIndicator size="large" color={C.green} />
-          <Text style={s.loadingText}>Loading your orders…</Text>
+          <Text style={s.loaderText}>Loading orders…</Text>
         </View>
       ) : currentOrders.length === 0 ? (
         <ScrollView
@@ -668,6 +728,7 @@ const OrdersScreen = ({ user, onActiveOrdersChange }) => {
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={C.green} />
           }
         >
+          <FulfillmentBanner mode={fulfillmentMode} />
           <EmptyState tabKey={activeTab} />
         </ScrollView>
       ) : (
@@ -679,8 +740,15 @@ const OrdersScreen = ({ user, onActiveOrdersChange }) => {
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={C.green} />
           }
         >
+          {/* Banner at top of list */}
+          <FulfillmentBanner mode={fulfillmentMode} />
+
           {currentOrders.map(order => (
-            <OrderCard key={order.id} order={order} />
+            <OrderCard
+              key={order.id}
+              order={order}
+              fulfillmentMode={fulfillmentMode}
+            />
           ))}
           <View style={{ height: 100 }} />
         </ScrollView>
@@ -691,68 +759,58 @@ const OrdersScreen = ({ user, onActiveOrdersChange }) => {
 
 export default OrdersScreen;
 
-// ── Styles ───────────────────────────────────────────────────────
+// ── Screen Styles ────────────────────────────────────────────────
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
-
   header: {
     flexDirection:     'row',
     justifyContent:    'space-between',
     alignItems:        'center',
     backgroundColor:   C.white,
-    paddingHorizontal: 18,
-    paddingTop:        16,
-    paddingBottom:     14,
+    paddingHorizontal: 20,
+    paddingVertical:   14,
     borderBottomWidth: 1,
     borderBottomColor: C.border,
   },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: C.textDark },
+  headerTitle: { fontSize: 20, fontWeight: '800', color: C.textDark, letterSpacing: -0.5 },
   refreshBtn: {
-    width:           36,
-    height:          36,
-    borderRadius:    18,
+    width:           34,
+    height:          34,
+    borderRadius:    17,
     backgroundColor: C.greenFaded,
     alignItems:      'center',
     justifyContent:  'center',
   },
-
-  tabsWrap: {
+  tabsBar: {
+    flexDirection:     'row',
     backgroundColor:   C.white,
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: C.border,
   },
-  tabsRow: { flexDirection: 'row' },
   tab: {
     flexDirection:     'row',
     alignItems:        'center',
     gap:               6,
-    paddingBottom:     12,
-    paddingRight:      20,
-    borderBottomWidth: 2.5,
+    paddingVertical:   12,
+    marginRight:       24,
+    borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },
   tabActive:      { borderBottomColor: C.green },
   tabLabel:       { fontSize: 13, fontWeight: '600', color: C.textLight },
   tabLabelActive: { color: C.green },
-  tabBadge: {
-    minWidth:          17,
-    height:            17,
-    borderRadius:      9,
+  badge: {
+    minWidth:          16,
+    height:            16,
+    borderRadius:      8,
     backgroundColor:   C.green,
     alignItems:        'center',
     justifyContent:    'center',
     paddingHorizontal: 4,
   },
-  tabBadgeText: { fontSize: 9, fontWeight: '800', color: C.white },
-
-  loadingWrap: {
-    flex:           1,
-    alignItems:     'center',
-    justifyContent: 'center',
-    gap:            12,
-  },
-  loadingText: { fontSize: 13, color: C.textLight, fontWeight: '500' },
-
-  body: { padding: 14 },
+  badgeText:  { fontSize: 9, fontWeight: '800', color: C.white },
+  loader:     { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
+  loaderText: { fontSize: 13, color: C.textLight },
+  body:       { padding: 14, paddingTop: 8 },
 });
