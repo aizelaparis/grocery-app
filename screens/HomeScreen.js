@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  Alert,
   StatusBar,
   ActivityIndicator,
   Image,
@@ -21,6 +20,7 @@ import OrdersScreen        from './OrdersScreen';
 import { supabase }        from '../api/db';
 import { getCategoryMeta } from '../constants/categoryIcons';
 import ProductModal        from '../components/ProductModal';
+import HighlightedBanner   from '../components/HighlightedBanner'; // ← new
 
 const C = {
   green:      '#2E7D32',
@@ -115,11 +115,8 @@ const pr = StyleSheet.create({
     elevation:       3,
     marginBottom:    12,
   },
-  cardSoldOut: {
-    opacity: 0.6,
-  },
+  cardSoldOut: { opacity: 0.6 },
 
-  // Image
   imgWrap: {
     backgroundColor: '#F5F7F5',
     height:          150,
@@ -130,7 +127,6 @@ const pr = StyleSheet.create({
   img:   { width: '85%', height: '85%' },
   emoji: { fontSize: 70 },
 
-  // Sold-out overlay
   soldOutOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -150,7 +146,6 @@ const pr = StyleSheet.create({
     overflow:          'hidden',
   },
 
-  // Info
   info: {
     padding:    10,
     paddingTop: 9,
@@ -162,12 +157,8 @@ const pr = StyleSheet.create({
     color:      C.textDark,
     lineHeight: 18,
   },
-  unit: {
-    fontSize: 11,
-    color:    C.textLight,
-  },
+  unit: { fontSize: 11, color: C.textLight },
 
-  // Price + add
   bottom: {
     flexDirection:  'row',
     alignItems:     'center',
@@ -282,17 +273,8 @@ const HomeTabContent = ({ onAddToCart }) => {
         )}
       </View>
 
-      {/* Promo Banner */}
-      <View style={hs.promoBanner}>
-        <View style={{ flex: 1 }}>
-          <Text style={hs.promoTag}>🎉 Weekly Deals</Text>
-          <Text style={hs.promoTitle}>Fresh picks,{'\n'}better prices</Text>
-          <TouchableOpacity style={hs.promoBtn}>
-            <Text style={hs.promoBtnText}>Shop Now</Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={{ fontSize: 62, lineHeight: 70 }}>🛒</Text>
-      </View>
+      {/* ── Highlighted Banner (replaces old promo) ── */}
+      <HighlightedBanner />
 
       {loading ? (
         <View style={hs.loadingWrap}>
@@ -374,7 +356,6 @@ const HomeTabContent = ({ onAddToCart }) => {
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
         onAddToCart={(product, qty) => {
-          // qty === 0 means "preview only" signal from similar items — skip cart
           if (qty > 0) onAddToCart(product, qty);
         }}
       />
@@ -389,25 +370,20 @@ const HomeScreen = ({ route, navigation }) => {
   const [cartItems,        setCartItems]        = useState([]);
   const [user,             setUser]             = useState(route?.params?.user ?? null);
 
-  // Badge = number of unique products in cart (not total qty)
   const cartCount = cartItems.length;
 
-  // ── Shared addToCart with stock enforcement ───────────────────────
   const handleAddToCart = useCallback((product, qty) => {
-    // Guard: never add 0-qty items
     if (qty <= 0) return;
 
     setCartItems(prev => {
       const existing = prev.find(i => i.product_id === product.id);
 
       if (existing) {
-        // Clamp to stock limit — never exceed available stock
         const newQty = existing.qty + qty;
         const capped = typeof product.stock === 'number'
           ? Math.min(newQty, product.stock)
           : newQty;
 
-        // Already at stock limit — do nothing
         if (capped === existing.qty) return prev;
 
         return prev.map(i =>
@@ -417,7 +393,6 @@ const HomeScreen = ({ route, navigation }) => {
         );
       }
 
-      // New item — clamp initial qty to stock
       const initialQty = typeof product.stock === 'number'
         ? Math.min(qty, product.stock)
         : qty;
@@ -438,18 +413,14 @@ const HomeScreen = ({ route, navigation }) => {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'Home': return (
-        <HomeTabContent onAddToCart={handleAddToCart} />
-      );
+      case 'Home': return <HomeTabContent onAddToCart={handleAddToCart} />;
       case 'Category': return <CategoryScreen navigation={navigation} />;
       case 'Cart': return (
         <CartScreen
           user={user}
           cartItems={cartItems}
-          onCartUpdate={(updated) => {
-            setCartItems(updated);
-          }}
-          onOrderPlaced={() => { setCartItems([]); }}
+          onCartUpdate={(updated) => setCartItems(updated)}
+          onOrderPlaced={() => setCartItems([])}
         />
       );
       case 'Orders': return (
@@ -526,27 +497,6 @@ const hs = StyleSheet.create({
     borderColor:       C.border,
   },
   searchInput: { flex: 1, fontSize: 14, color: C.textDark },
-
-  promoBanner: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    backgroundColor:   C.green,
-    marginHorizontal:  18,
-    borderRadius:      18,
-    paddingVertical:   20,
-    paddingHorizontal: 22,
-    marginBottom:      22,
-  },
-  promoTag:     { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginBottom: 4 },
-  promoTitle:   { fontSize: 20, fontWeight: '800', color: C.white, lineHeight: 26, marginBottom: 14 },
-  promoBtn: {
-    backgroundColor:   C.white,
-    borderRadius:      8,
-    paddingHorizontal: 16,
-    paddingVertical:   8,
-    alignSelf:         'flex-start',
-  },
-  promoBtnText: { fontSize: 13, fontWeight: '700', color: C.green },
 
   loadingWrap: { paddingVertical: 60, alignItems: 'center' },
 
