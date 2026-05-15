@@ -9,6 +9,7 @@ import CategoryScreen from '../screens/CategoryScreen';
 import CartScreen from '../screens/CartScreen';
 import OrdersScreen from '../screens/OrdersScreen';
 import ProductListScreen from '../screens/ProductListScreen';
+import HelpAndSupportScreen from '../screens/HelpAndSupportScreen';
 
 
 const Stack = createStackNavigator();
@@ -30,9 +31,8 @@ const AppNavigator = ({ initialRoute = 'Welcome', initialParams = {} }) => (
       <Stack.Screen name="Category" component={CategoryScreen} />
       <Stack.Screen name="Cart" component={CartScreen} />
       <Stack.Screen name="Orders" component={OrdersScreen} />
-      <Stack.Screen name="ProductList" component={ProductListScreen}
-  options={{ headerShown: false }}
-/>
+      <Stack.Screen name="ProductList" component={ProductListScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="HelpAndSupport" component={HelpAndSupportScreen} options={{ headerShown: false }} />
 
     </Stack.Navigator>
   </NavigationContainer>

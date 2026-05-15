@@ -429,6 +429,7 @@ const HomeScreen = ({ route, navigation }) => {
       case 'Profile': return (
         <ProfileScreen
           user={user}
+          navigation={navigation}
           onUserUpdate={(updated) => setUser(updated)}
           onLogout={() => navigation.reset({ index: 0, routes: [{ name: 'Login' }] })}
         />

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -37,7 +37,7 @@ const C = {
   accentBg:   '#FFF3E0',
 };
 
-const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
+const ProfileScreen = ({ user, onLogout, onUserUpdate, navigation }) => {
   const [firstName,  setFirstName]  = useState(user?.first_name ?? '');
   const [lastName,   setLastName]   = useState(user?.last_name  ?? '');
   const [email,      setEmail]      = useState(user?.email      ?? '');
@@ -51,6 +51,11 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
   const [passLoading,   setPassLoading]   = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
 
+  // Stats state
+  const [orderCount,  setOrderCount]  = useState(0);
+  const [totalSpent,  setTotalSpent]  = useState(0);
+  const [statsLoading, setStatsLoading] = useState(true);
+
   const firstRef = useRef();
   const lastRef  = useRef();
   const emailRef = useRef();
@@ -62,6 +67,44 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
     : '—';
 
   const fullName = `${firstName} ${lastName}`.trim() || 'Guest User';
+
+  // ── Fetch real stats from Supabase ──
+  useEffect(() => {
+    if (!user?.id) return;
+    const fetchStats = async () => {
+      setStatsLoading(true);
+      try {
+        // Total orders count (all statuses)
+        const { data: orders, error } = await supabase
+          .from('orders')
+          .select('id, status, total_amount')
+          .eq('user_id', user.id);
+
+        if (error) throw error;
+
+        const count = orders?.length ?? 0;
+
+        // Total spent = sum of delivered orders only
+        const spent = orders
+          ?.filter(o => o.status === 'delivered')
+          .reduce((sum, o) => sum + parseFloat(o.total_amount ?? 0), 0) ?? 0;
+
+        setOrderCount(count);
+        setTotalSpent(spent);
+      } catch (err) {
+        console.warn('Stats fetch error:', err.message);
+      } finally {
+        setStatsLoading(false);
+      }
+    };
+    fetchStats();
+  }, [user?.id]);
+
+  // Format spent amount nicely
+  const formatSpent = (amount) => {
+    if (amount >= 1000) return `₱${(amount / 1000).toFixed(1)}K`;
+    return `₱${amount.toFixed(0)}`;
+  };
 
   const dismissEditing = () => {
     Keyboard.dismiss();
@@ -84,100 +127,100 @@ const ProfileScreen = ({ user, onLogout, onUserUpdate }) => {
     setIsDirty(true);
   };
 
-const handleUpdate = async () => {
-  if (!firstName.trim() || !lastName.trim() || !email.trim()) {
-    Alert.alert('Validation', 'All fields are required.');
-    return;
-  }
-  if (!email.includes('@')) {
-    Alert.alert('Validation', 'Enter a valid email address.');
-    return;
-  }
-  setSaving(true);
-  dismissEditing();
-  try {
-    const { error } = await supabase
-      .from('users')
-      .update({
+  const handleUpdate = async () => {
+    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
+      Alert.alert('Validation', 'All fields are required.');
+      return;
+    }
+    if (!email.includes('@')) {
+      Alert.alert('Validation', 'Enter a valid email address.');
+      return;
+    }
+    setSaving(true);
+    dismissEditing();
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({
+          first_name: firstName.trim(),
+          last_name:  lastName.trim(),
+          email:      email.trim(),
+        })
+        .eq('id', user.id);
+
+      if (error) throw error;
+      setIsDirty(false);
+      onUserUpdate?.({
+        ...user,
         first_name: firstName.trim(),
         last_name:  lastName.trim(),
         email:      email.trim(),
-      })
-      .eq('id', user.id);
+      });
+      Alert.alert('Success', 'Profile updated successfully!');
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Failed to update profile.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
-    if (error) throw error;
-    setIsDirty(false);
-    onUserUpdate?.({
-      ...user,
-      first_name: firstName.trim(),
-      last_name:  lastName.trim(),
-      email:      email.trim(),
-    });
-    Alert.alert('Success', 'Profile updated successfully!');
-  } catch (err) {
-    Alert.alert('Error', err.message || 'Failed to update profile.');
-  } finally {
-    setSaving(false);
-  }
-};
+  const handleChangePassword = async () => {
+    if (!newPassword || newPassword.length < 8) {
+      Alert.alert('Validation', 'Password must be at least 8 characters.');
+      return;
+    }
+    setPassLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      setNewPassword('');
+      setShowPassModal(false);
+      Alert.alert('Success', 'Password updated successfully!');
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Failed to update password.');
+    } finally {
+      setPassLoading(false);
+    }
+  };
 
-const handleChangePassword = async () => {
-  if (!newPassword || newPassword.length < 8) {
-    Alert.alert('Validation', 'Password must be at least 8 characters.');
-    return;
-  }
-  setPassLoading(true);
-  try {
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) throw error;
-    setNewPassword('');
-    setShowPassModal(false);
-    Alert.alert('Success', 'Password updated successfully!');
-  } catch (err) {
-    Alert.alert('Error', err.message || 'Failed to update password.');
-  } finally {
-    setPassLoading(false);
-  }
-};
+  const handleAddressSave = async (newAddress) => {
+    setAddress(newAddress);
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ address: newAddress })
+        .eq('id', user.id);
 
-const handleAddressSave = async (newAddress) => {
-  setAddress(newAddress);
-  try {
-    const { error } = await supabase
-      .from('users')
-      .update({ address: newAddress })
-      .eq('id', user.id);
+      if (error) throw error;
+      onUserUpdate?.({ ...user, address: newAddress });
+      Alert.alert('Saved', 'Address updated successfully!');
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Failed to save address.');
+    }
+  };
 
-    if (error) throw error;
-    onUserUpdate?.({ ...user, address: newAddress });
-    Alert.alert('Saved', 'Address updated successfully!');
-  } catch (err) {
-    Alert.alert('Error', err.message || 'Failed to save address.');
-  }
-};
+  const handleChangePhoto = () => {
+    Alert.alert('Change Photo', 'This feature is coming soon!');
+  };
 
-const handleChangePhoto = () => {
-  Alert.alert('Change Photo', 'This feature is coming soon!');
-};
-
-const handleLogout = () => {
-  Alert.alert(
-    'Log Out',
-    'Are you sure you want to log out?',
-    [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Log Out',
-        style: 'destructive',
-        onPress: async () => {
-          await supabase.auth.signOut();
-          await clearSession();
-          onLogout();
+  const handleLogout = () => {
+    Alert.alert(
+      'Log Out',
+      'Are you sure you want to log out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Log Out',
+          style: 'destructive',
+          onPress: async () => {
+            await supabase.auth.signOut();
+            await clearSession();
+            onLogout();
+          },
         },
-      },
-    ]
-  );
-};
+      ]
+    );
+  };
 
   return (
     <TouchableWithoutFeedback onPress={dismissEditing}>
@@ -193,9 +236,6 @@ const handleLogout = () => {
           <View style={s.greenHeader}>
             <View style={s.headerTopRow}>
               <Text style={s.pageTitle}></Text>
-              <TouchableOpacity style={s.settingsBtn} activeOpacity={0.8}>
-                <MaterialIcons name="settings" size={20} color={C.white} />
-              </TouchableOpacity>
             </View>
 
             <View style={s.avatarWrap}>
@@ -231,21 +271,24 @@ const handleLogout = () => {
               </TouchableOpacity>
             )}
 
-            {/* Stats row */}
+            {/* Stats row — real data */}
             <View style={s.statsRow}>
               <View style={s.statBox}>
-                <Text style={s.statVal}>24</Text>
+                {statsLoading ? (
+                  <ActivityIndicator size="small" color={C.white} />
+                ) : (
+                  <Text style={s.statVal}>{orderCount}</Text>
+                )}
                 <Text style={s.statLbl}>Orders</Text>
               </View>
               <View style={s.statSep} />
               <View style={s.statBox}>
-                <Text style={s.statVal}>₱4.2K</Text>
-                <Text style={s.statLbl}>Saved</Text>
-              </View>
-              <View style={s.statSep} />
-              <View style={s.statBox}>
-                <Text style={s.statVal}>4.9★</Text>
-                <Text style={s.statLbl}>Rating</Text>
+                {statsLoading ? (
+                  <ActivityIndicator size="small" color={C.white} />
+                ) : (
+                  <Text style={s.statVal}>{formatSpent(totalSpent)}</Text>
+                )}
+                <Text style={s.statLbl}>Spent</Text>
               </View>
             </View>
           </View>
@@ -328,11 +371,10 @@ const handleLogout = () => {
               </View>
             </View>
 
-            {/* Preferences */}
+            {/* Preferences — Delivery Address only */}
             <View style={s.section}>
               <Text style={s.sectionLabel}>Preferences</Text>
               <View style={s.card}>
-                {/* Delivery Address row — taps open LocationModal */}
                 <SettingsRow
                   icon="location-on"
                   label="Delivery Address"
@@ -340,25 +382,24 @@ const handleLogout = () => {
                   valueColor={address ? C.textLight : C.accent}
                   onPress={() => setShowLocationModal(true)}
                 />
-                <Divider />
-                <SettingsRow
-                  icon="credit-card"
-                  label="Payment Method"
-                  value="GCash ••••4567"
-                  onPress={() => {}}
-                />
               </View>
             </View>
 
-            {/* Settings */}
+            {/* Settings — Change Password & Help only */}
             <View style={s.section}>
               <Text style={s.sectionLabel}>Settings</Text>
               <View style={s.card}>
-                <SettingsRow icon="lock-outline"       label="Change Password" onPress={() => setShowPassModal(true)} />
+                <SettingsRow
+                  icon="lock-outline"
+                  label="Change Password"
+                  onPress={() => setShowPassModal(true)}
+                />
                 <Divider />
-                <SettingsRow icon="notifications-none" label="Notifications"   onPress={() => {}} />
-                <Divider />
-                <SettingsRow icon="help-outline"        label="Help & Support"  onPress={() => {}} />
+                <SettingsRow
+                  icon="help-outline"
+                  label="Help & Support"
+                  onPress={() => navigation.navigate('HelpAndSupport')}
+                />
               </View>
             </View>
 
@@ -567,14 +608,6 @@ const s = StyleSheet.create({
     color:         'rgba(255,255,255,0.9)',
     letterSpacing: 0.3,
   },
-  settingsBtn: {
-    width:           36,
-    height:          36,
-    borderRadius:    18,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems:      'center',
-    justifyContent:  'center',
-  },
   avatarWrap:   { position: 'relative', marginBottom: 12 },
   avatarCircle: {
     width:           88,
@@ -602,7 +635,6 @@ const s = StyleSheet.create({
   nameText:  { fontSize: 20, fontWeight: '800', color: C.white, marginBottom: 3 },
   emailText: { fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: '500', marginBottom: 8 },
 
-  // Address chips under email
   addressChip: {
     flexDirection:     'row',
     alignItems:        'center',
@@ -638,13 +670,14 @@ const s = StyleSheet.create({
     fontWeight: '600',
   },
 
+  // Stats row — now only 2 stats (Orders + Spent)
   statsRow: {
     flexDirection:    'row',
     backgroundColor:  'rgba(255,255,255,0.12)',
     borderRadius:     14,
     overflow:         'hidden',
     marginHorizontal: 24,
-    width:            '85%',
+    width:            '60%',
   },
   statBox: {
     flex:            1,
